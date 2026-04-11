@@ -1,0 +1,36 @@
+# Build Output
+Objects/
+Listings/
+
+# Keil Project Files (User-specific)
+*.uvguix.*
+*.uvoptx.bak
+
+# Keil Build Artifacts
+*.axf
+*.crf
+*.d
+*.o
+*.dep
+*.htm
+*.build_log.htm
+*.lnp
+*.sct
+*.map
+*.lst
+
+# Debug Config
+DebugConfig/
+
+# IDE Logs
+.vscode/uv4.log
+.vscode/uv4.log.lock
+.vscode/keil-assistant.log
+
+# OS Files
+*.bak
+*.swp
+*~
+
+# Keil Cleanup Script (optional)
+keilkill.bat

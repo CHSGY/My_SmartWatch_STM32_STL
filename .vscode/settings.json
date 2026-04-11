@@ -1,0 +1,17 @@
+{
+    "files.associations": {
+        "menu.h": "c",
+        "queue": "c",
+        "key.h": "c",
+        "timer.h": "c",
+        "stm32f10x.h": "c",
+        "oled.h": "c",
+        "oled_data.h": "c",
+        "myrtc.h": "c",
+        "set": "c",
+        "settime.h": "c",
+        "functional": "c",
+        "limits": "c"
+    },
+    "commentTranslate.source": "Bing"
+}
