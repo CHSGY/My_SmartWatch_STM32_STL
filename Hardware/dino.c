@@ -57,14 +57,6 @@ void Show_Score(void)
 }
 
 /*
-* 游戏分数显示
-*/
-void Show_Score(void)
-{
-    OLED_ShowNum(96,0,score,5,OLED_6X8);
-}
-
-/*
 * 游戏地面显示
 * 将256像素长度的地面分为2组进行显示，每组128个像素长度
 */

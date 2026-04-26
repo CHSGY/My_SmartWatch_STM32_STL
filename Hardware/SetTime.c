@@ -211,43 +211,6 @@ int Set_Hour(void)
 
 }
 
-int Set_Min(void)
-{
-	while(1)
-	{
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1：add Hour 
-		{
-            ChangeRTC_Time(4,1);
-            if(MyRTC_Time[4] >= 60)
-            {
-                MyRTC_Time[4] = 0;
-				MyRTC_SetTime();
-            }
-		}
-		
-		else if(KeyNum == 2)    //Key2: minus Hour
-		{
-			ChangeRTC_Time(4,0);
-			if(MyRTC_Time[4] < 0)
-			{
-				MyRTC_Time[4] = 59;
-				MyRTC_SetTime();
-			}
-		}
-		
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetTime_UI();
-		OLED_ReverseArea(24,16,16,16);
-		OLED_Update();
-
-	}
-}
-
 /**
   * @brief 设置分钟
   * @retval 0-返回
@@ -258,7 +221,7 @@ int Set_Min(void)
 	while(1)
 	{
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1：add Hour 
+		if(KeyNum == 1)     //Key1：add Min 
 		{
             ChangeRTC_Time(5,1);
             if(MyRTC_Time[5] >= 60)
@@ -268,7 +231,7 @@ int Set_Min(void)
             }
 		}
 		
-		else if(KeyNum == 2)        //Key2: minus Hour
+		else if(KeyNum == 2)    //Key2: minus Min
 		{
 			ChangeRTC_Time(5,0);
 			if(MyRTC_Time[5] < 0)
