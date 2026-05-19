@@ -224,9 +224,9 @@ void dino_tick(void)
 
     if(Cloud_Count >= 50)
     {
-        Cloud_Pos++;
         Cloud_Count = 0;
-        if(Cloud_Count > 200)
+        Cloud_Pos++;
+        if(Cloud_Pos > 200)
         {
             Cloud_Pos = 0;
         }
