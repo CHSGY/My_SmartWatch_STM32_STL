@@ -161,7 +161,6 @@ void KeyTick(void)
       if(Pre_KeyState!=0 && Cur_KeyState == 0) //表示某个按键被按下并松开
       {
         Key_Num = Pre_KeyState;                //前回状态表示按键值
-        KeyTimeFlag = 0;
       }
       KeyTimeFlag = 0;
     }
