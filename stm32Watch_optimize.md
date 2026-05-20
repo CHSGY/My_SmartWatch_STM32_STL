@@ -74,7 +74,7 @@ void KeyTick(void) {
 
 ## 2. 性能优化
 
-### 2.1 ⚡ `Battery_Show_UI()` — ADC 过采样导致严重卡顿
+### 2.1 ⚡ `Battery_Show_UI()` — ADC 过采样导致严重卡顿 ✅ 已修复
 
 **文件：** `Hardware/menu.c`  
 **问题：** 每次电池 UI 刷新都采集 3000 次 ADC 求均值。ADC 单次转换约 18μs，3000 次约 **54ms**，完全阻塞 UI。
