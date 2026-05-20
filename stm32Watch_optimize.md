@@ -1610,6 +1610,706 @@ void Dino_UpdateJump(uint8_t jump_flag, int16_t *jump_pos, int16_t *jump_count);
 
 ---
 
+## 10. 🛠️ FreeRTOS 移植实战：基于仓库代码的逐文件修改指南
+
+> 本节基于 GitHub 仓库 `CHSGY/My_SmartWatch_STM32_STL` 的**实际代码**，
+> 给出每个文件具体要改什么、怎么改、为什么改。
+> 与第 8.1 节的理论框架互补——8.1 讲"为什么"，本节讲"怎么做"。
+
+---
+
+### 10.1 当前架构全景（从代码中提取）
+
+```
+main.c 的实际执行流：
+
+int main() {
+    OLED_Init();
+    Peripheral_Init();      ← menu.c 中，初始化 RTC/Key/LED/AD/MPU6050
+    Timer_Init();            ← Timer.c 中，TIM2 配置为 1ms 中断
+    while (1) {
+        OLED_Clear();
+        Battery_Show_UI();   ← menu.c 中，3000次 ADC 循环（~54ms 阻塞）
+        OLED_Update();
+        First_Page_Clock();  ← menu.c 中，内部 while(1) 阻塞等按键
+        if (flag == 1) Menu_Page();    ← menu.c 中，内部 while(1) 阻塞
+        else if (flag == 2) SettingPage();
+    }
+}
+
+TIM2_IRQHandler (main.c 中定义)：
+    ├── Key3_Tick()          ← Key.c 中，中断里读 GPIO 累加 press_time
+    ├── KeyTick()            ← Key.c 中，中断里做 20ms 消抖
+    ├── StopClock_Tick()     ← menu.c 中，中断里更新秒表计时
+    └── dino_tick()          ← dino.c 中，中断里更新游戏物理
+```
+
+**关键发现：** `Timer.c` 中的 `TIM2_IRQHandler` 已被注释掉，实际的中断处理函数定义在 `main.c` 中。
+
+---
+
+### 10.2 架构变化对照
+
+```
+移植前（裸机）                              移植后（FreeRTOS）
+─────────────────                          ─────────────────
+main.c while(1) 顺序执行                    main.c → xTaskCreate + vTaskStartScheduler
+  ├── Battery_Show_UI() 54ms阻塞            │
+  ├── First_Page_Clock() while(1)           ├── Task_KeyScan    (1ms周期, 优先级4)
+  │     └── Menu_Page() while(1)            ├── Task_AppLogic   (事件驱动, 优先级3)
+  │           └── StopClock() while(1)      ├── Task_Display    (33ms周期, 优先级2)
+  │                                         ├── Task_BatteryMon (5s周期, 优先级1)
+  └── TIM2_IRQHandler (1ms)                 └── Idle → __WFI()
+        ├── Key3_Tick()                     
+        ├── KeyTick()                       TIM2_IRQHandler → 删除
+        ├── StopClock_Tick()                FreeRTOS 用 SysTick 做系统时基
+        └── dino_tick()                     
+```
+
+---
+
+### 10.3 逐文件修改清单
+
+#### 10.3.1 `User/main.c` — 重写
+
+**文件路径：** `User/main.c`  
+**当前行数：** ~50 行  
+**改动程度：** 🔴 重写
+
+**当前代码关键片段：**
+
+```c
+// main.c 中的全局变量（跨文件共享，缺少 volatile）
+extern uint8_t Key_Num;
+extern uint8_t ClockUI_Move_Flag;
+extern uint8_t start_timing_flag;
+uint8_t KeyTimeFlag;
+uint8_t Pre_KeyState;
+uint8_t Cur_KeyState;
+
+int main(void) {
+    OLED_Init();
+    Peripheral_Init();   // menu.c 中定义，初始化所有外设
+    Timer_Init();        // Timer.c 中定义，TIM2 1ms 中断
+    OLED_Clear();
+    Show_Clock_UI();
+    OLED_Update();
+    while (1) {
+        OLED_Clear();
+        Battery_Show_UI();        // ← 问题1：3000次ADC，54ms阻塞
+        OLED_Update();
+        ClockUI_Move_Flag = First_Page_Clock();  // ← 问题2：内部while(1)阻塞
+        if (ClockUI_Move_Flag == 1) Menu_Page();
+        else if (ClockUI_Move_Flag == 2) SettingPage();
+    }
+}
+
+void TIM2_IRQHandler(void) {     // ← 问题3：中断里执行大量业务逻辑
+    if (TIM_GetITStatus(TIM2, TIM_IT_Update) == SET) {
+        Key3_Tick();
+        KeyTick();
+        if (start_timing_flag == 1) StopClock_Tick();
+        dino_tick();
+        TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+    }
+}
+```
+
+**改造后：**
+
+```c
+// main.c — FreeRTOS 版本
+#include "stm32f10x.h"
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "OLED.h"
+#include "menu.h"
+
+// 任务间通信队列
+QueueHandle_t xKeyQueue;
+
+// 任务函数声明
+void Task_KeyScan(void *pvParameters);
+void Task_AppLogic(void *pvParameters);
+void Task_Display(void *pvParameters);
+void Task_BatteryMon(void *pvParameters);
+
+int main(void) {
+    OLED_Init();
+    Peripheral_Init();
+    // Timer_Init();  ← 不再需要，FreeRTOS 用 SysTick
+
+    xKeyQueue = xQueueCreate(5, sizeof(uint8_t));
+
+    xTaskCreate(Task_KeyScan,    "KeyScan",  128, NULL, 4, NULL);
+    xTaskCreate(Task_AppLogic,   "AppLogic", 256, NULL, 3, NULL);
+    xTaskCreate(Task_Display,    "Display",  256, NULL, 2, NULL);
+    xTaskCreate(Task_BatteryMon, "Battery",  128, NULL, 1, NULL);
+
+    vTaskStartScheduler();
+
+    while (1);  // 不应到达这里
+}
+
+// TIM2_IRQHandler 删除！
+// FreeRTOS 的 port.c 已提供 SysTick_Handler 和 PendSV_Handler
+```
+
+**改动要点：**
+| 改动 | 原因 |
+|------|------|
+| 删除 `while(1)` 主循环 | 业务逻辑移到各任务中 |
+| 删除 `TIM2_IRQHandler` | ISR 逻辑移到对应任务中 |
+| 删除 `Timer_Init()` 调用 | FreeRTOS 用 SysTick 做时基 |
+| 新增 `xKeyQueue` | 按键任务 → 应用任务的事件通道 |
+| 新增 `xTaskCreate` × 4 | 创建 4 个任务 |
+| 新增 `vTaskStartScheduler()` | 启动调度器 |
+
+---
+
+#### 10.3.2 `Hardware/Key.c` — 中等改动
+
+**文件路径：** `Hardware/Key.c`  
+**当前行数：** ~120 行  
+**改动程度：** 🟡 中等
+
+**当前代码关键片段：**
+
+```c
+// Key.c 中的共享变量 —— 缺少 volatile
+uint8_t Key_Num;           // KeyTick() 写，Key_GetNum() 读
+uint16_t press_time = 0;   // Key3_Tick() 写，Key_GetState() 读
+
+// Key3_Tick() — 在 TIM2 中断里运行，每 1ms 读一次 GPIO
+void Key3_Tick(void) {
+    if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0) press_time++;
+    if (GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 1) press_time = 0;
+}
+
+// KeyTick() — 在 TIM2 中断里运行，每 20ms 做消抖
+void KeyTick(void) {
+    KeyTimeFlag++;
+    if (KeyTimeFlag >= 20) {
+        Pre_KeyState = Cur_KeyState;
+        Cur_KeyState = Key_GetState();
+        if (Pre_KeyState != 0 && Cur_KeyState == 0) {
+            Key_Num = Pre_KeyState;
+            KeyTimeFlag = 0;   // ← 冗余复位（已在外部复位）
+        }
+        KeyTimeFlag = 0;
+    }
+}
+
+// Key_GetNum() — 主循环调用，读取并清零 Key_Num
+uint8_t Key_GetNum(void) {
+    uint8_t Temp;
+    if (Key_Num) {
+        Temp = Key_Num;
+        Key_Num = 0;
+        return Temp;
+    } else {
+        return 0;
+    }
+}
+```
+
+**改造后：**
+
+```c
+// ✅ 1. 共享变量加 volatile（中断与任务共享）
+volatile uint8_t Key_Num;
+volatile uint8_t KeyTimeFlag;
+volatile uint8_t Pre_KeyState, Cur_KeyState;
+volatile uint16_t press_time;
+
+// ✅ 2. Key3_Tick() 和 KeyTick() 保持不变
+//    但调用方从 TIM2_IRQHandler 改为 Task_KeyScan
+
+// ✅ 3. Key_GetNum() 加临界区保护
+uint8_t Key_GetNum(void) {
+    taskENTER_CRITICAL();
+    uint8_t Temp = Key_Num;
+    Key_Num = 0;
+    taskEXIT_CRITICAL();
+    return Temp;
+}
+```
+
+**新增 Task_KeyScan（放在 `App/Tasks.c` 或直接放 Key.c 末尾）：**
+
+```c
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+
+extern QueueHandle_t xKeyQueue;
+
+void Task_KeyScan(void *pvParameters) {
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    for (;;) {
+        Key3_Tick();    // 原来在 TIM2 中断里，现在移到任务中
+        KeyTick();      // 原来在 TIM2 中断里，现在移到任务中
+
+        uint8_t key = Key_GetNum();
+        if (key != 0) {
+            xQueueSend(xKeyQueue, &key, 0);  // 发送到队列
+        }
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));  // 1ms 周期
+    }
+}
+```
+
+**改动要点：**
+| 改动 | 原因 |
+|------|------|
+| 5 个共享变量加 `volatile` | 防止编译器优化导致任务读到缓存值 |
+| `Key_GetNum()` 加临界区 | `Key_Num` 的读-清零是原子操作，防止竞态 |
+| 新增 `Task_KeyScan` | 消抖逻辑从 ISR 下沉到任务 |
+| `xQueueSend` 替代全局变量 | 按键事件通过队列传递，阻塞等待省 CPU |
+
+---
+
+#### 10.3.3 `Hardware/menu.c` — 改动最大
+
+**文件路径：** `Hardware/menu.c`  
+**当前行数：** ~600+ 行  
+**改动程度：** 🔴 大量改动（但模式重复）
+
+**当前代码结构：**
+
+```c
+// menu.c 包含所有应用逻辑，每个应用都是 while(1) 阻塞式：
+
+void Peripheral_Init(void) { ... }       // 外设初始化 — 不改
+void Battery_Show_UI(void) { ... }       // 3000次ADC — 需优化
+void Show_Clock_UI(void) { ... }         // 时钟UI渲染 — 不改
+uint8_t First_Page_Clock(void) {         // 首页 while(1) — 需改状态机
+    while(1) {
+        KeyNum = Key_GetNum();
+        // ... 光标移动逻辑 ...
+        Show_Clock_UI();
+        OLED_Update();
+    }
+}
+uint8_t Menu_Page(void) { ... }          // 菜单 while(1) — 需改状态机
+int StopClock(void) { ... }              // 秒表 while(1) — 需改状态机
+int flashlight_Func(void) { ... }        // 手电筒 while(1) — 需改状态机
+int MPU6050_Main(void) { ... }           // MPU6050 while(1) — 需改状态机
+int Game(void) { ... }                   // 游戏入口 while(1) — 需改状态机
+int Emoji_Func(void) { ... }             // 表情 while(1) — 需改状态机
+uint8_t Gradienter_Func(void) { ... }    // 水平仪 while(1) — 需改状态机
+```
+
+**改造思路 — 状态机替代 while(1)：**
+
+```c
+// ✅ 新增应用状态枚举
+typedef enum {
+    APP_CLOCK,        // 首页时钟
+    APP_MENU,         // 菜单
+    APP_SETTING,      // 设置
+    APP_STOPWATCH,    // 秒表
+    APP_FLASHLIGHT,   // 手电筒
+    APP_MPU6050,      // MPU6050 数据
+    APP_GAME,         // 恐龙游戏
+    APP_EMOJI,        // 动态表情
+    APP_GRADIENTER    // 水平仪
+} AppID_t;
+
+static AppID_t current_app = APP_CLOCK;
+
+// ✅ 应用逻辑处理函数 —— 处理一次按键事件
+void App_ProcessKey(uint8_t key) {
+    switch (current_app) {
+        case APP_CLOCK:
+            // 原 First_Page_Clock() 中的单次按键处理逻辑
+            if (key == 1) {
+                Clockmoveflag--;
+                if (Clockmoveflag <= 0) Clockmoveflag = 2;
+            } else if (key == 2) {
+                Clockmoveflag++;
+                if (Clockmoveflag >= 3) Clockmoveflag = 1;
+            } else if (key == 3) {
+                if (Clockmoveflag == 1) current_app = APP_MENU;
+                else if (Clockmoveflag == 2) current_app = APP_SETTING;
+            } else if (key == 4) {
+                // 长按关机逻辑
+            }
+            break;
+
+        case APP_MENU:
+            // 原 Menu_Page() 中的单次按键处理逻辑
+            if (key == 1) { MenuFlag--; if (MenuFlag <= 0) MenuFlag = 7; }
+            else if (key == 2) { MenuFlag++; if (MenuFlag >= 8) MenuFlag = 1; }
+            else if (key == 3) {
+                // 根据 MenuFlag 跳转到对应应用
+                switch (MenuFlag) {
+                    case 1: current_app = APP_CLOCK; break;
+                    case 2: current_app = APP_STOPWATCH; break;
+                    case 3: current_app = APP_FLASHLIGHT; break;
+                    case 4: current_app = APP_MPU6050; break;
+                    case 5: current_app = APP_GAME; Game_Init(); break;
+                    case 6: current_app = APP_EMOJI; break;
+                    case 7: current_app = APP_GRADIENTER; break;
+                }
+            }
+            break;
+
+        case APP_STOPWATCH:
+            // 原 StopClock() 中的单次按键处理逻辑
+            if (key == 3 && StopClock_Flag == 1) current_app = APP_MENU;
+            // ... 其他秒表控制逻辑
+            break;
+
+        case APP_FLASHLIGHT:
+            if (key == 3 && flashlight_Flag == 1) {
+                flashlight_OFF();
+                current_app = APP_MENU;
+            }
+            break;
+
+        // ... 其他应用类似处理
+    }
+}
+
+// ✅ UI 渲染函数 —— 由 Task_Display 调用
+void App_RenderUI(void) {
+    switch (current_app) {
+        case APP_CLOCK:
+            Show_Clock_UI();
+            if (Clockmoveflag == 1) OLED_ReverseArea(0, 48, 32, 16);
+            else OLED_ReverseArea(96, 48, 32, 16);
+            break;
+        case APP_MENU:
+            Menu_Animation();
+            break;
+        case APP_STOPWATCH:
+            Show_StopClock_UI();
+            // 根据 StopClock_Flag 反相显示对应区域
+            break;
+        // ... 其他应用
+    }
+}
+```
+
+**Task_AppLogic 实现：**
+
+```c
+void Task_AppLogic(void *pvParameters) {
+    uint8_t key;
+    for (;;) {
+        // 没有按键事件时阻塞在这里，不占 CPU
+        xQueueReceive(xKeyQueue, &key, portMAX_DELAY);
+        App_ProcessKey(key);
+    }
+}
+```
+
+**Battery_Show_UI() 优化：**
+
+```c
+// ❌ 当前：每次调用都做 3000 次 ADC
+void Battery_Show_UI(void) {
+    for (i = 0; i < 3000; i++) {
+        AD_Value = AD_GetValue();
+        sum += AD_Value;
+    }
+    AD_Value = sum / 3000;
+    // ... 渲染电量 UI
+}
+
+// ✅ 优化：16 次采样 + 缓存
+static uint16_t cached_battery = 0;
+static uint8_t battery_refresh_cnt = 0;
+
+void Battery_Update(void) {
+    battery_refresh_cnt++;
+    if (battery_refresh_cnt < 50) return;  // 每 50 帧才采样一次
+    battery_refresh_cnt = 0;
+
+    uint32_t sum = 0;
+    for (int i = 0; i < 16; i++) {
+        sum += AD_GetValue();
+    }
+    cached_battery = sum / 16;
+}
+
+void Battery_Show_UI_Cached(void) {
+    // 使用 cached_battery 渲染电量 UI（原渲染逻辑不变）
+    // ...
+}
+```
+
+**改动要点：**
+| 改动 | 原因 |
+|------|------|
+| 7 个 `while(1)` 改为状态机 | 让出 CPU，允许其他任务运行 |
+| 新增 `App_ProcessKey()` | 事件驱动，每次只处理一个按键 |
+| 新增 `App_RenderUI()` | 显示任务调用，与业务逻辑解耦 |
+| `Battery_Show_UI()` 采样优化 | 3000次→16次，54ms→0.3ms |
+| `Delay_ms()` 改为 `vTaskDelay()` | 阻塞延时时让出 CPU |
+
+---
+
+#### 10.3.4 `Hardware/dino.c` — 中等改动
+
+**文件路径：** `Hardware/dino.c`  
+**当前行数：** ~200 行  
+**改动程度：** 🟡 中等
+
+**当前代码关键片段：**
+
+```c
+// dino.c 中的游戏状态变量 —— 全局，被 dino_tick() 和渲染函数共享
+int score;
+uint8_t score_count;
+uint16_t ground_count, ground_Pos;
+uint8_t Barrier_Pos, Barrier_Flag;
+uint8_t Cloud_Pos, Cloud_Count;
+uint8_t Dino_jump_flag, Dino_jump_Pos;
+uint16_t Jump_count;
+
+// dino_tick() — 在 TIM2 中断里运行，更新游戏物理
+void dino_tick(void) {
+    score_count++;
+    ground_count++;
+    Cloud_Count++;
+    // ... 分数递增、地面移动、障碍物移动、云朵移动、跳跃计时
+}
+
+// Show_Dino() — 渲染函数里直接读按键（耦合）
+void Show_Dino(void) {
+    uint8_t KeyNum;
+    KeyNum = Key_GetNum();   // ← 渲染函数不应该读按键
+    if (KeyNum == 1 && Dino_jump_flag == 0) {
+        Dino_jump_flag = 1;
+        Dino_jump_Pos = 29;
+    }
+    // ... 渲染恐龙
+}
+
+// Dino_game_Animation() — while(1) 阻塞
+uint8_t Dino_game_Animation(void) {
+    while (1) {
+        OLED_Clear();
+        Show_Score();
+        Show_Ground();
+        Show_Barrier();
+        Show_Cloud();
+        Show_Dino();       // ← 内部读按键
+        OLED_Update();
+        if (isColliding(&Barr, &dino)) return 0;
+    }
+}
+```
+
+**改造后：**
+
+```c
+// ✅ 1. 游戏状态变量加 volatile（被任务和可能的 ISR 共享）
+volatile uint8_t Dino_jump_flag;
+volatile uint16_t Jump_count;
+
+// ✅ 2. dino_tick() 保持不变，但从 ISR 移到任务中调用
+void Task_GameTick(void *pvParameters) {
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    for (;;) {
+        dino_tick();
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(1));
+    }
+}
+
+// ✅ 3. Show_Dino() 不再读按键，跳跃由外部触发
+void Show_Dino(void) {
+    // 删除 KeyNum = Key_GetNum();
+    // 跳跃触发改为由 Task_AppLogic 通过设置 Dino_jump_flag 实现
+    if (Dino_jump_flag == 0) {
+        // 步行动画
+    } else {
+        Dino_jump_Pos = JUMP_HEIGHT * sin((float)(Pi * Jump_count / 1000));
+        OLED_ShowImage(0, 44 - Dino_jump_Pos, 16, 18, Dino[2]);
+    }
+}
+
+// ✅ 4. Dino_game_Animation() 改为单帧渲染
+uint8_t Dino_RenderOneFrame(void) {
+    OLED_Clear();
+    Show_Score();
+    Show_Ground();
+    Show_Barrier();
+    Show_Cloud();
+    Show_Dino();
+    OLED_Update();
+    return isColliding(&Barr, &dino);  // 0=继续, 1=游戏结束
+}
+```
+
+**改动要点：**
+| 改动 | 原因 |
+|------|------|
+| `dino_tick()` 从 ISR 移到任务 | ISR 应最小化，业务逻辑下沉 |
+| `Show_Dino()` 去掉按键读取 | 渲染与输入解耦 |
+| `Dino_game_Animation()` 改为单帧 | 配合状态机，不再阻塞 |
+| 关键变量加 `volatile` | 防止编译器优化 |
+
+---
+
+#### 10.3.5 `System/Timer.c` — 小改动
+
+**文件路径：** `System/Timer.c`  
+**当前行数：** ~50 行  
+**改动程度：** 🟢 小
+
+**当前代码：**
+
+```c
+void Timer_Init(void) {
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+    // ... TIM2 配置为 1ms 中断 ...
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 2;
+    // ...
+}
+
+// 注释中的 TIM2_IRQHandler（实际定义在 main.c）
+```
+
+**改造后：**
+
+```c
+// ✅ 方案 A：完全移除 Timer_Init()（推荐）
+// FreeRTOS 用 SysTick 做时基，TIM2 不再需要
+// 如果 Keil 工程中有调用 Timer_Init() 的地方，注释掉即可
+
+// ✅ 方案 B：保留 TIM2 用于其他用途，但降低优先级
+void Timer_Init(void) {
+    // ... 硬件配置不变 ...
+    NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;  // 降低到 3
+    // 确保 TIM2 优先级 < configMAX_SYSCALL_INTERRUPT_PRIORITY (191)
+    // 191 对应 4bit 优先级中的 11，优先级 3 < 11，安全
+}
+```
+
+**必须做的：**
+| 操作 | 原因 |
+|------|------|
+| 删除或注释 `main.c` 中的 `TIM2_IRQHandler` | FreeRTOS 的 `port.c` 提供 `SysTick_Handler` 和 `PendSV_Handler`，不能冲突 |
+| 如果 `stm32f10x_it.c` 中有 `PendSV_Handler` 和 `SysTick_Handler`，注释掉 | 同上 |
+
+---
+
+#### 10.3.6 `Hardware/AD.c` — 微调
+
+**文件路径：** `Hardware/AD.c`  
+**当前行数：** ~40 行  
+**改动程度：** 🟢 微调
+
+**当前代码：**
+
+```c
+ADC_InitStructure.ADC_NbrOfChannel = 2;  // ← 设为 2，但只配了 1 个通道
+```
+
+**改造后：**
+
+```c
+ADC_InitStructure.ADC_NbrOfChannel = 1;  // ← 修正为 1
+```
+
+---
+
+#### 10.3.7 Keil 工程配置
+
+| 操作 | 说明 |
+|------|------|
+| 添加 FreeRTOS 源码分组 | 工程树右键 → "Manage Project Items" → 新建 "FreeRTOS" 分组，添加 `tasks.c`、`queue.c`、`list.c`、`timers.c`、`event_groups.c`、`portable/MemMang/heap_4.c`、`portable/RVDS/ARM_CM3/port.c` |
+| Include Paths | Project → Options → C/C++ → Include Paths 添加 `.\FreeRTOS\Include` |
+| MicroLIB | Target → "Use MicroLIB" **必须勾选**，否则 `heap_4.c` 的 `malloc` 链接失败 |
+| C99 Mode | C/C++ → "C99 Mode" 勾选 |
+| 中断处理 | `stm32f10x_it.c` 中注释掉 `PendSV_Handler` 和 `SysTick_Handler`（如有） |
+
+---
+
+### 10.4 新增文件清单
+
+| 文件路径 | 作用 | 内容 |
+|----------|------|------|
+| `FreeRTOS/Source/` | FreeRTOS 内核源码 | `tasks.c`, `queue.c`, `list.c`, `timers.c`, `event_groups.c` |
+| `FreeRTOS/Source/portable/MemMang/heap_4.c` | 内存管理 | 带碎片合并的动态内存分配 |
+| `FreeRTOS/Source/portable/RVDS/ARM_CM3/port.c` | Cortex-M3 移植层 | 上下文切换、SysTick、PendSV |
+| `FreeRTOS/Include/FreeRTOSConfig.h` | 核心配置 | 见第 8.1.3 节的完整配置 |
+| `App/Tasks.c` | 任务函数实现 | `Task_KeyScan`, `Task_AppLogic`, `Task_Display`, `Task_BatteryMon` |
+| `App/Tasks.h` | 任务函数声明 | `extern QueueHandle_t xKeyQueue;` 等 |
+
+---
+
+### 10.5 移植执行顺序（推荐）
+
+```
+Phase 0：环境搭建（Day 1）
+  ├── 下载 FreeRTOS 源码
+  ├── 添加到 Keil 工程
+  ├── 配置 FreeRTOSConfig.h
+  ├── 勾选 MicroLIB + C99
+  └── 验证：编译通过，无错误
+
+Phase 1：最小系统（Day 2）
+  ├── 修改 main.c：只创建 1 个 Task（LED 闪烁）
+  ├── 注释掉 TIM2_IRQHandler
+  ├── 注释掉 while(1) 中的所有业务代码
+  └── 验证：LED 以 500ms 闪烁，证明调度器运行
+
+Phase 2：按键任务（Day 3）
+  ├── 修改 Key.c：加 volatile + 临界区
+  ├── 创建 Task_KeyScan
+  ├── 创建 xKeyQueue
+  ├── 创建 Task_AppLogic（只处理按键，不渲染）
+  └── 验证：按键值通过 Queue 传递，串口打印确认
+
+Phase 3：显示任务（Day 4）
+  ├── 创建 Task_Display（33ms 周期）
+  ├── 保留原有 UI 渲染函数，由 Task_Display 调用
+  └── 验证：OLED 正常显示时钟界面
+
+Phase 4：电池任务（Day 5）
+  ├── 优化 Battery_Show_UI()：3000次→16次
+  ├── 创建 Task_BatteryMon（5s 周期）
+  └── 验证：电量显示正常，不卡顿
+
+Phase 5：应用状态机（Day 6-8）
+  ├── 逐步将 First_Page_Clock() 改为状态机
+  ├── 逐步将 Menu_Page() 改为状态机
+  ├── 逐步将各应用函数改为状态机
+  └── 验证：每个应用独立运行，切换流畅
+
+Phase 6：游戏任务（Day 9）
+  ├── dino_tick() 从 ISR 移到 Task_GameTick
+  ├── Dino_game_Animation() 改为单帧渲染
+  └── 验证：游戏正常运行，不阻塞其他功能
+
+Phase 7：压力测试（Day 10）
+  ├── 连续运行 24 小时
+  ├── 频繁切换应用
+  ├── 检查是否有死机、内存泄漏
+  └── 用 uxTaskGetStackHighWaterMark() 检查栈使用
+```
+
+---
+
+### 10.6 移植过程中的已知坑
+
+| 坑 | 现象 | 原因 | 解决 |
+|----|------|------|------|
+| HardFault | 下载后直接死机 | `configMAX_SYSCALL_INTERRUPT_PRIORITY` 配错，或 TIM2 中断优先级高于 FreeRTOS 限制 | 检查 `FreeRTOSConfig.h` 中的中断优先级配置 |
+| 编译报错 `Undefined symbol xPortSysTickHandler` | 链接失败 | 未添加 `port.c` 到工程 | 添加 `FreeRTOS/Source/portable/RVDS/ARM_CM3/port.c` |
+| `malloc` 链接失败 | 链接错误 | 未勾选 MicroLIB | Keil → Target → "Use MicroLIB" |
+| OLED 显示闪烁 | 画面不稳定 | `Task_Display` 用 `vTaskDelay` 而非 `vTaskDelayUntil`，周期不固定 | 改用 `vTaskDelayUntil` |
+| 按键丢失 | 按了没反应 | `Task_KeyScan` 优先级不够，被 Display 抢占 | KeyScan 优先级设为最高（4） |
+| 两个 `TIM2_IRQHandler` | 编译报重复定义 | `main.c` 和 `Timer.c` 都定义了该函数 | 删除 `main.c` 中的定义（`Timer.c` 中已注释） |
+| `PendSV_Handler` 重复 | 编译报重复定义 | `stm32f10x_it.c` 和 `port.c` 都定义了 | 注释掉 `stm32f10x_it.c` 中的定义 |
+
+---
+
 ## 总结
 
 ### 短期修复（提升代码质量）
