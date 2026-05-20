@@ -9,7 +9,7 @@
 
 ## 1. 关键 Bug 修复
 
-### 1.1 🐛 `dino_tick()` — 云朵环绕逻辑失效
+### 1.1 🐛 `dino_tick()` — 云朵环绕逻辑失效 ✅ 已修复
 
 **文件：** `Hardware/dino.c`  
 **问题：** `Cloud_Count` 刚被置 0，紧接着判断 `Cloud_Count > 200`，该条件**永远不成立**，云朵永远不会环绕。
@@ -36,7 +36,7 @@ if (Cloud_Count >= 50) {
 
 ---
 
-### 1.2 🐛 `KeyTick()` — `KeyTimeFlag` 重复复位
+### 1.2 🐛 `KeyTick()` — `KeyTimeFlag` 重复复位 ✅ 已修复
 
 **文件：** `Hardware/Key.c`  
 **问题：** `KeyTimeFlag = 0` 在 `if` 内部和外部各出现一次，外部无条件复位导致内部复位冗余。虽然功能上每 20ms 扫描一次不受影响，但代码逻辑混乱，易引入时序错误。
