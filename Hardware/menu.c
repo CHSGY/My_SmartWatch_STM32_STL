@@ -28,24 +28,35 @@ void Peripheral_Init(void)
 
 
 /*************************首页时钟界面**********************************/
+
+/* 电池电量缓存，避免每帧都做ADC采样 */
+static uint16_t cached_AD_Value = 0;
+static uint8_t Battery_Refresh_Cnt = 0;
+
 /*
 * @brief 电池电量显示UI
+* @note  优化：每50帧才做一次ADC采样（16次均值），其余帧使用缓存值
+*        原方案每帧3000次采样，阻塞约20ms；优化后约1ms
 */
 void Battery_Show_UI(void)
 {
 	uint16_t AD_Value;
-	//float VBat;
 	int8_t Battery_Capacity = 0;
-	int i=0;
-	int sum=0;
 
-	//均值滤波，取3000次采样平均值
-	for(i=0;i<3000;i++)
-	{
-		AD_Value = AD_GetValue();
-		sum += AD_Value;
+	Battery_Refresh_Cnt++;
+	if (Battery_Refresh_Cnt < 50) {
+		/* 未到采样周期，使用缓存值直接显示 */
+		AD_Value = cached_AD_Value;
+	} else {
+		/* 每50帧采样一次，取16次均值 */
+		Battery_Refresh_Cnt = 0;
+		uint32_t sum = 0;
+		for (int i = 0; i < 16; i++) {
+			sum += AD_GetValue();
+		}
+		cached_AD_Value = sum / 16;
+		AD_Value = cached_AD_Value;
 	}
-	AD_Value = sum/3000;
 	//OLED_ShowNum(70,8,AD_Value,4,OLED_6X8);
 
 	//VBat = (float)AD_Value/4095 * 3.3;
