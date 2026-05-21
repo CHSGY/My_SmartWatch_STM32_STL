@@ -17,10 +17,10 @@ uint8_t score_count;                    /* 分数递增计数 */
 uint16_t ground_count;                  /* 地面移动计数 */
 uint16_t ground_Pos;                    /* 地面像素位置计数，范围：0~255（共256个像素点） */
 
-uint8_t Barrier_Pos;                    /* 障碍物屏幕位置 */
+uint16_t Barrier_Pos;                   /* 障碍物屏幕位置，范围：0~143 */
 uint8_t Barrier_Flag;                   /* 障碍物类型索引：0~2 */
 
-uint8_t Cloud_Pos;                      /* 云朵屏幕位置 */
+uint16_t Cloud_Pos;                     /* 云朵屏幕位置，范围：0~200 */
 uint8_t Cloud_Count;                    /* 云朵移动计数 */
 
 uint8_t Dino_jump_flag;                 /* 跳跃标志：1-跳跃中 0-地面 */

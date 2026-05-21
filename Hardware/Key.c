@@ -2,11 +2,11 @@
 #include "Delay.h"
 
 /****外部变量*****/
-extern uint8_t KeyTimeFlag;
-extern uint8_t Pre_KeyState,Cur_KeyState;
+extern volatile uint8_t KeyTimeFlag;
+extern volatile uint8_t Pre_KeyState,Cur_KeyState;
 /***************/
 
-uint8_t Key_Num;
+volatile uint8_t Key_Num;
 
 /**
   * 函    数：按键初始化

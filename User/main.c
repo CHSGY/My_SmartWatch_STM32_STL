@@ -28,14 +28,14 @@
   */
 
 extern uint8_t Clockmoveflag;
-extern uint8_t Key_Num;
+extern volatile uint8_t Key_Num;
 extern uint8_t ClockUI_Move_Flag; 
 extern uint8_t start_timing_flag;
 
 uint8_t ClkUIPage_Flag = 1;
-uint8_t KeyTimeFlag;               /* 按键定时标志，每20ms触发一次按键状态检测 */
-uint8_t Pre_KeyState;              /* 前一次按键状态 */
-uint8_t Cur_KeyState;              /* 当前按键状态 */
+volatile uint8_t KeyTimeFlag;               /* 按键定时标志，每20ms触发一次按键状态检测 */
+volatile uint8_t Pre_KeyState;              /* 前一次按键状态 */
+volatile uint8_t Cur_KeyState;              /* 当前按键状态 */
 
 
 int main(void)

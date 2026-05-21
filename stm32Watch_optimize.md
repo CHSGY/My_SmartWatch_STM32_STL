@@ -157,7 +157,7 @@ uint8_t Gradienter_Func(void) {
 
 ---
 
-### 2.3 ⚡ `OLED_ShowImage()` 调用频次优化
+### 2.3 ⚡ `OLED_ShowImage()` 调用频次优化 ⚠️ 不建议实施
 
 **涉及文件：** `Hardware/dino.c`  
 **问题：** 在 `Dino_game_Animation()` 中每次循环都调用 5 次 `OLED_ShowImage()`（分数、地面、障碍物、云朵、恐龙），每帧都操作大量位图数据。可考虑仅更新变化区域以加速。
@@ -171,6 +171,13 @@ OLED_UpdateArea(0, 44, 128, 18);        // 仅刷新变化区域
 ```
 
 如果 OLED 驱动支持 `OLED_UpdateArea()`，局部刷新的帧率可提升 3~5 倍。
+
+**⚠️ 不建议实施原因：**
+- **拖尾风险：** 障碍物/云朵为移动物体，需额外追踪旧坐标并清除旧位置，否则画面残留残影
+- **Ground 直接操作缓冲区：** `Show_Ground()` 直接写 `OLED_DisplayBuf[7][i]`，Page 7 每帧必须全量刷新，无法省掉
+- **重叠区域复杂：** 恐龙（Y=44~62）与障碍物（Y=44~62）共享 Page 5-6，需合并脏区逻辑
+- **收益有限：** 实际节省约 40-50% I2C 流量（~0.5-1ms/帧），非帧率瓶颈
+- **复杂度代价：** 代码从 5 行增至 20+ 行，引入 4 个旧坐标静态变量，后续维护成本高
 
 ---
 
@@ -191,7 +198,7 @@ ADC_InitStructure.ADC_NbrOfChannel = 1;
 
 ---
 
-### 3.2 🔧 `Key_Num` 缺少 `volatile` 修饰
+### 3.2 🔧 `Key_Num` 缺少 `volatile` 修饰 ✅ 已修复
 
 **文件：** `Hardware/Key.c`  
 **问题：** `Key_Num` 在中断函数 `KeyTick()` 中被写入，在主循环 `Key_GetNum()` 中被读取。缺少 `volatile` 可能导致编译器优化时读取缓存值而非真实内存值。
@@ -205,7 +212,7 @@ volatile uint8_t Key_Num;
 
 ---
 
-### 3.3 🔧 `dino_tick()` — `Cloud_Pos` 类型范围不足
+### 3.3 🔧 `dino_tick()` — `Cloud_Pos` 类型范围不足 ✅ 已修复
 
 **文件：** `Hardware/dino.c`  
 **问题：** `Cloud_Pos` 定义为 `uint8_t`（0~255），但环绕阈值设为 200。虽然目前不会溢出，但如果未来调整速度或增加新元素，应使用更大类型或明确约束。
