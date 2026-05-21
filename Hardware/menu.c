@@ -1015,8 +1015,7 @@ uint8_t Gradienter_Func(void)
 			return 0;
 		}	
 		OLED_Clear();
-		Show_Gradienter_UI();
-		OLED_Update();
+		Show_Gradienter_UI();	// 内部已调用 OLED_Update()
 	}
 }
 

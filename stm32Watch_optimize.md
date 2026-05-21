@@ -118,7 +118,7 @@ void Battery_Show_UI(void) {
 
 ---
 
-### 2.2 ⚡ `Gradienter_Func()` — `Show_Gradienter_UI()` 内部重复 `OLED_Update()`
+### 2.2 ⚡ `Gradienter_Func()` — `Show_Gradienter_UI()` 内部重复 `OLED_Update()` ✅ 已修复
 
 **文件：** `Hardware/menu.c`  
 **问题：** `Show_Gradienter_UI()` 内部已调用 `OLED_Update()`（第 991 行），但 `Gradienter_Func()` 循环末尾又额外调用了一次（第 1008 行），导致每次循环多进行一次全屏 SPI/I2C 传输。`OLED_Clear()` 在这里是必需的（否则旧帧圆环残留），**不是冗余**。
