@@ -10,22 +10,21 @@
 
 extern double Pi;
 
-int score;                              /* 游戏得分 */
-uint8_t score_count;                    /* 分数递增计数 */
+int Dino_Score;                         /* 游戏得分 */
+uint8_t Dino_ScoreCount;                /* 分数递增计数 */
 
+uint16_t Dino_GroundCount;              /* 地面移动计数 */
+uint16_t Dino_GroundPos;                /* 地面像素位置计数，范围：0~255（共256个像素点） */
 
-uint16_t ground_count;                  /* 地面移动计数 */
-uint16_t ground_Pos;                    /* 地面像素位置计数，范围：0~255（共256个像素点） */
+uint16_t Dino_BarrierPos;               /* 障碍物屏幕位置，范围：0~143 */
+uint8_t Dino_BarrierFlag;               /* 障碍物类型索引：0~2 */
 
-uint16_t Barrier_Pos;                   /* 障碍物屏幕位置，范围：0~143 */
-uint8_t Barrier_Flag;                   /* 障碍物类型索引：0~2 */
+uint16_t Dino_CloudPos;                 /* 云朵屏幕位置，范围：0~200 */
+uint8_t Dino_CloudCount;                /* 云朵移动计数 */
 
-uint16_t Cloud_Pos;                     /* 云朵屏幕位置，范围：0~200 */
-uint8_t Cloud_Count;                    /* 云朵移动计数 */
-
-uint8_t Dino_jump_flag;                 /* 跳跃标志：1-跳跃中 0-地面 */
-uint8_t Dino_jump_Pos;                  /* 当前跳跃高度 */
-uint16_t Jump_count = 1;                /* 跳跃计时计数 */
+uint8_t Dino_JumpFlag;                  /* 跳跃标志：1-跳跃中 0-地面 */
+uint8_t Dino_JumpPos;                   /* 当前跳跃高度 */
+uint16_t Dino_JumpCount = 1;            /* 跳跃计时计数 */
 
 /**
   * @brief 游戏对象边界结构体
@@ -43,7 +42,7 @@ struct Object_Position{
   */
 void Game_Init(void)
 {
-    score = score_count = ground_count = ground_Pos = Barrier_Pos = Barrier_Flag = Cloud_Pos = Cloud_Count = Dino_jump_flag = Dino_jump_Pos =Jump_count = 0;
+    Dino_Score = Dino_ScoreCount = Dino_GroundCount = Dino_GroundPos = Dino_BarrierPos = Dino_BarrierFlag = Dino_CloudPos = Dino_CloudCount = Dino_JumpFlag = Dino_JumpPos = Dino_JumpCount = 0;
 }
 
 /**
@@ -53,7 +52,7 @@ void Game_Init(void)
   */
 void Show_Score(void)
 {
-    OLED_ShowNum(96,0,score,5,OLED_6X8);
+    OLED_ShowNum(96,0,Dino_Score,5,OLED_6X8);
 }
 
 /*
@@ -62,26 +61,26 @@ void Show_Score(void)
 */
 void Show_Ground(void)
 {
-    if(ground_Pos < 128)
+    if(Dino_GroundPos < 128)
     {
         //地面1
         for(uint8_t i=0; i<128; i++)
         {
-            //从第ground_Pos格开始的128格复制到显存数组中
-            OLED_DisplayBuf[7][i] = Ground[ground_Pos+i]; //ground_Pos在循环中不变，循环结束后累加
+            //从第Dino_GroundPos格开始的128格复制到显存数组中
+            OLED_DisplayBuf[7][i] = Ground[Dino_GroundPos+i]; //Dino_GroundPos在循环中不变，循环结束后累加
         }
     }
     else   
     {
         //地面2
-        for(uint8_t i=0; i<255-ground_Pos; i++)   //先算256像素的地面还剩多少格：255 - ground_Pos
+        for(uint8_t i=0; i<255-Dino_GroundPos; i++)   //先算256像素的地面还剩多少格：255 - Dino_GroundPos
         {
-            OLED_DisplayBuf[7][i] = Ground[i+ground_Pos];
+            OLED_DisplayBuf[7][i] = Ground[i+Dino_GroundPos];
         }
         //地面1
-        for(uint8_t i=255-ground_Pos; i<128; i++)   //屏幕剩下的位置用“地面”开头补齐，起始下标就是 255-ground_Pos，一直补到 127 
+        for(uint8_t i=255-Dino_GroundPos; i<128; i++)   //屏幕剩下的位置用"地面"开头补齐，起始下标就是 255-Dino_GroundPos，一直补到 127 
         {
-            OLED_DisplayBuf[7][i] = Ground[i-(255-ground_Pos)]; //把下标“折回”到地面开头 
+            OLED_DisplayBuf[7][i] = Ground[i-(255-Dino_GroundPos)]; //把下标"折回"到地面开头 
         }
     }
 
@@ -98,16 +97,16 @@ struct Object_Position Barr;
   */
 void Show_Barrier(void)
 {
-    if(Barrier_Pos >= 143)
+    if(Dino_BarrierPos >= 143)
     {
-        Barrier_Flag = rand()%3; //生成0~2的随机数
+        Dino_BarrierFlag = rand()%3; //生成0~2的随机数
     }
     //以屏幕右下角为坐标原点向左为正方向计算X坐标
-    OLED_ShowImage(127-Barrier_Pos,44,16,18,Barrier[Barrier_Flag]);
+    OLED_ShowImage(127-Dino_BarrierPos,44,16,18,Barrier[Dino_BarrierFlag]);
 
     /*障碍物边界值*/
-    Barr.minX = 127-Barrier_Pos;
-    Barr.maxX = 143-Barrier_Pos;
+    Barr.minX = 127-Dino_BarrierPos;
+    Barr.maxX = 143-Dino_BarrierPos;
     Barr.minY = 44;
     Barr.maxY = 62;
 }
@@ -119,7 +118,7 @@ void Show_Barrier(void)
   */
 void Show_Cloud(void)
 {
-    OLED_ShowImage(127-Cloud_Pos,9,16,8,Cloud);
+    OLED_ShowImage(127-Dino_CloudPos,9,16,8,Cloud);
 }
 
 
@@ -135,15 +134,15 @@ void Show_Dino(void)
 {
     uint8_t KeyNum;
     KeyNum = Key_GetNum();
-    if(KeyNum == 1 && Dino_jump_flag == 0)
+    if(KeyNum == 1 && Dino_JumpFlag == 0)
     {
-        Dino_jump_flag = 1;
-        Dino_jump_Pos = 29;
+        Dino_JumpFlag = 1;
+        Dino_JumpPos = 29;
     }
 
-    if(Dino_jump_flag == 0)
+    if(Dino_JumpFlag == 0)
     {
-        if(Cloud_Pos%2 == 0)
+        if(Dino_CloudPos%2 == 0)
         {
             OLED_ShowImage(0,44,16,18,Dino[0]);
         }
@@ -154,15 +153,15 @@ void Show_Dino(void)
     }
     else
     {
-        Dino_jump_Pos = JUMP_HEIGHT * sin((float)(Pi * Jump_count/1000));
-        OLED_ShowImage(0,44-Dino_jump_Pos,16,18,Dino[2]);
+        Dino_JumpPos = JUMP_HEIGHT * sin((float)(Pi * Dino_JumpCount/1000));
+        OLED_ShowImage(0,44-Dino_JumpPos,16,18,Dino[2]);
     }
 
     /*小恐龙边界值*/
     dino.minX = 0;
     dino.maxX = 16;
-    dino.minY = 44-Dino_jump_Pos;
-    dino.maxY = 62-Dino_jump_Pos;
+    dino.minY = 44-Dino_JumpPos;
+    dino.maxY = 62-Dino_JumpPos;
 }
 
 /**
@@ -196,49 +195,49 @@ uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
   */
 void dino_tick(void)
 {
-    score_count++;
-    ground_count++;
-    Cloud_Count++;
+    Dino_ScoreCount++;
+    Dino_GroundCount++;
+    Dino_CloudCount++;
 
-    if(score_count >= 100)  //0.1秒变化一次分数值
+    if(Dino_ScoreCount >= 100)  //0.1秒变化一次分数值
     {
-        score_count=0;
-        score++;
+        Dino_ScoreCount=0;
+        Dino_Score++;
     }
 
-    if(ground_count >= 20)
+    if(Dino_GroundCount >= 20)
     {
-        ground_count = 0;
-        ground_Pos++;
-        Barrier_Pos++;
-        if(ground_Pos >= 256)
+        Dino_GroundCount = 0;
+        Dino_GroundPos++;
+        Dino_BarrierPos++;
+        if(Dino_GroundPos >= 256)
         {
-            ground_Pos = 0;
+            Dino_GroundPos = 0;
         }
 
-        if(Barrier_Pos >= 144)
+        if(Dino_BarrierPos >= 144)
         {
-            Barrier_Pos = 0;
-        }
-    }
-
-    if(Cloud_Count >= 50)
-    {
-        Cloud_Count = 0;
-        Cloud_Pos++;
-        if(Cloud_Pos > 200)
-        {
-            Cloud_Pos = 0;
+            Dino_BarrierPos = 0;
         }
     }
 
-    if(Dino_jump_flag == 1) 
+    if(Dino_CloudCount >= 50)
     {
-        Jump_count++;
-        if(Jump_count >= 1000)
+        Dino_CloudCount = 0;
+        Dino_CloudPos++;
+        if(Dino_CloudPos > 200)
         {
-            Dino_jump_flag = 0;
-            Jump_count = 0;
+            Dino_CloudPos = 0;
+        }
+    }
+
+    if(Dino_JumpFlag == 1) 
+    {
+        Dino_JumpCount++;
+        if(Dino_JumpCount >= 1000)
+        {
+            Dino_JumpFlag = 0;
+            Dino_JumpCount = 0;
         }
     }
 }
