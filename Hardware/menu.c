@@ -362,6 +362,7 @@ uint8_t Menu_Page(void)
 	
 	while(1) //Get key's number continuely
 	{
+
 		KeyNum = Key_GetNum(); //Get Key Number
 		if(KeyNum == 1) //Key1: last item
 		{
@@ -563,6 +564,7 @@ int StopClock(void)
 	uint8_t Temp_StopClock_Flag = 0;		//返回秒表页面光标位置
 	while(1) //Get key's number continuely
 	{
+
 		KeyNum = Key_GetNum(); //Get Key Number
 		if(KeyNum == 1) //Key1: last item
 		{
@@ -685,6 +687,7 @@ int flashlight_Func(void)
 	//Show_flashlight_UI();
 	while(1) //Get key's number continuely
 	{
+
 		KeyNum = Key_GetNum(); //Get Key Number
 		if(KeyNum == 1) //Key1: last item
 		{
@@ -810,6 +813,7 @@ int MPU6050_Main(void)
 {
 	while (1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 3)			//确认键按下
 		{
@@ -847,6 +851,7 @@ int Game(void)
 	uint8_t Temp_game_flag = 0;
 	while(1) //Get key's number continuely
 	{
+
 		KeyNum = Key_GetNum(); //Get Key Number
 		if(KeyNum == 1) //Key1: last item
 		{
@@ -966,6 +971,7 @@ int Emoji_Func(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 3)			//确认键按下
 		{
@@ -1007,6 +1013,7 @@ uint8_t Gradienter_Func(void)
 	//Show_Gradienter_UI();
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 3)			//确认键按下
 		{

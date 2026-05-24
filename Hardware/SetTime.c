@@ -2,6 +2,7 @@
 #include "OLED.h"
 #include "Key.h"
 #include "MyRTC.h"
+#include "menu.h"
 
 
 /***************************日期时间设置功能***********************************/
@@ -62,6 +63,7 @@ int Set_Year(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1) //Key1：add Year 
 		{
@@ -95,6 +97,7 @@ int Set_Month(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)         //Key1：add Month 
 		{
@@ -137,6 +140,7 @@ int Set_Day(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)         //Key1：add Day
 		{
@@ -178,6 +182,7 @@ int Set_Hour(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)     //Key1：add Hour 
 		{
@@ -220,6 +225,7 @@ int Set_Min(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)     //Key1：add Min 
 		{
@@ -262,6 +268,7 @@ int Set_Sec(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)         //Key1：add Sec 
 		{
@@ -307,6 +314,7 @@ int SetTime_mainprocess(void)
 {
 	while(1)
 	{
+
 		KeyNum = Key_GetNum();
 		uint8_t Key_FuncFlag = 0;
 		if(KeyNum == 1)       //光标递增

@@ -37,51 +37,58 @@ volatile uint8_t KeyTimeFlag;               /* 按键定时标志，每20ms触�
 volatile uint8_t Pre_KeyState;              /* 前一次按键状态 */
 volatile uint8_t Cur_KeyState;              /* 当前按键状态 */
 
+/**
+  * @brief  TIM2 中断服务函数
+  * @note   每 1ms 进入一次，执行所有 tick 任务
+  *         对于本项目，中断中的任务都是轻量级计数器操作，
+  *         在中断中执行可确保实时性，避免主循环耗时操作影响
+  */
+void TIM2_IRQHandler(void)
+{
+	if(TIM_GetITStatus(TIM2, TIM_IT_Update) == SET)
+	{
+		Key3_Tick();      // 按键3长按检测
+		KeyTick();        // 按键消抖扫描
+		
+		if(start_timing_flag == 1)
+		{
+			StopClock_Tick();  // 秒表计时
+		}
+		
+		dino_tick();      // 游戏物理更新
+		
+		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+	}
+}
+
 
 int main(void)
 {
 	OLED_Init();
 	Peripheral_Init();
-  Timer_Init();
+	Timer_Init();
 	
 	OLED_Clear();
 	Show_Clock_UI();
 	OLED_Update();
 	
-  while (1)
+	while (1)
 	{
-    OLED_Clear();
-    Battery_Show_UI();
-    OLED_Update();
+		OLED_Clear();
+		Battery_Show_UI();
+		OLED_Update();
 		ClockUI_Move_Flag = First_Page_Clock();
-    if(ClockUI_Move_Flag == 1)        //[菜单] 选项被选中
-    {
-      Menu_Page();                      //进入菜单页面
-    }
-    else if(ClockUI_Move_Flag == 2)   //[设置] 选项被选中
-    {
-      SettingPage();                    //进入设置页面
-    }
-    else
-    {
-      ; 
-    }
-	}
-}
-
-
-void TIM2_IRQHandler(void)                        //每隔1ms进入一次中断
-{
-	if(TIM_GetITStatus(TIM2, TIM_IT_Update) == SET) //判断定时更新中断条件是否触发
-	{
-    Key3_Tick();
-    KeyTick();
-    if(start_timing_flag == 1)
-    {
-      StopClock_Tick();
-    }
-    dino_tick();
-    
-		TIM_ClearITPendingBit(TIM2, TIM_IT_Update);
+		if(ClockUI_Move_Flag == 1)        //[菜单] 选项被选中
+		{
+			Menu_Page();                      //进入菜单页面
+		}
+		else if(ClockUI_Move_Flag == 2)   //[设置] 选项被选中
+		{
+			SettingPage();                    //进入设置页面
+		}
+		else
+		{
+			; 
+		}
 	}
 }

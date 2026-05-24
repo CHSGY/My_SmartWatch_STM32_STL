@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include "Delay.h"
+#include "menu.h"
 
 #define JUMP_HEIGHT 29                    /* 小恐龙跳跃最大高度 */
 
@@ -254,6 +255,7 @@ uint8_t Dino_game_Animation(void)
     uint8_t return_flag = 0;
     while(1)
     {
+
         OLED_Clear();
         Show_Score();
         Show_Ground();
