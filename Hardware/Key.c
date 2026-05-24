@@ -1,5 +1,6 @@
 #include "stm32f10x.h"                  // Device header
 #include "Delay.h"
+#include "Key.h"
 
 /****外部变量*****/
 extern volatile uint8_t KeyTimeFlag;
@@ -126,12 +127,12 @@ uint8_t Key_GetState(void)
 		return 2;
 	}
 	
-	else if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0 && press_time < 1000)			//读PA4输入寄存器的状态，按住时间<1000ms为短按
+	else if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0 && press_time < KEY_LONG_PRESS_MS)			//读PA4输入寄存器的状态，按住时间<1000ms为短按
 	{
 		return 3;
 	}
 
-	else if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0 && press_time >= 1000)			//读PA4输入寄存器的状态，按住时间>=1000ms为长按
+	else if(GPIO_ReadInputDataBit(GPIOA, GPIO_Pin_4) == 0 && press_time >= KEY_LONG_PRESS_MS)			//读PA4输入寄存器的状态，按住时间>=1000ms为长按
 	{
 		return 4;
 	}
@@ -154,7 +155,7 @@ uint8_t Key_GetState(void)
 void KeyTick(void)
 {
 	KeyTimeFlag++;
-    if(KeyTimeFlag >= 20)                      //20ms触发一次判断按键状态
+    if(KeyTimeFlag >= KEY_DEBOUNCE_MS)                 //20ms触发一次判断按键状态
     {
       Pre_KeyState = Cur_KeyState;             //赋值给前回状态
       Cur_KeyState = Key_GetState();           //获取当前按键状态并赋值给当前状态

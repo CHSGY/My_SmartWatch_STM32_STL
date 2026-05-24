@@ -44,24 +44,24 @@ void Battery_Show_UI(void)
 	int8_t Battery_Capacity = 0;
 
 	Battery_Refresh_Cnt++;
-	if (Battery_Refresh_Cnt < 50) {
+	if (Battery_Refresh_Cnt < BATTERY_REFRESH_FRAMES) {
 		/* 未到采样周期，使用缓存值直接显示 */
 		AD_Value = cached_AD_Value;
 	} else {
 		/* 每50帧采样一次，取16次均值 */
 		Battery_Refresh_Cnt = 0;
 		uint32_t sum = 0;
-		for (int i = 0; i < 16; i++) {
+		for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
 			sum += AD_GetValue();
 		}
-		cached_AD_Value = sum / 16;
+		cached_AD_Value = sum / BATTERY_ADC_SAMPLES;
 		AD_Value = cached_AD_Value;
 	}
 	//OLED_ShowNum(70,8,AD_Value,4,OLED_6X8);
 
 	//VBat = (float)AD_Value/4095 * 3.3;
 	//OLED_ShowFloatNum(80,0,VBat,1,1,OLED_6X8);
-	Battery_Capacity = (AD_Value - ((2.64/3.3)*4092))*100 / (4092-3276);
+	Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
 
 	OLED_ShowNum(82,4,Battery_Capacity,3,OLED_6X8);
 	OLED_ShowChar(100,4,'%',OLED_6X8);
@@ -75,19 +75,19 @@ void Battery_Show_UI(void)
 	{
 		Battery_Capacity = 100;
 		OLED_ShowNum(82,4,Battery_Capacity,3,OLED_6X8);
-		OLED_ShowImage(110,0,16,16,Battery);
+		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
 	}
 
 	else if(Battery_Capacity >= 10 && Battery_Capacity < 100)
 	{
-		OLED_ShowImage(110,0,16,16,Battery);
-		OLED_ClearArea(113+Battery_Capacity/10,5,10-Battery_Capacity/10,6);
+		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
+		OLED_ClearArea(BATTERY_BAR_X + Battery_Capacity/10, BATTERY_BAR_Y, BATTERY_BAR_W - Battery_Capacity/10, BATTERY_BAR_H);
 		OLED_ClearArea(82,4,6,8);
 	}
 	else	//个位数字电量显示
 	{
-		OLED_ShowImage(110,0,16,16,Battery);
-		OLED_ClearArea(113,5,10,6);	//电池电量UI清除
+		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
+		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//电池电量UI清除
 		OLED_ClearArea(82,4,12,8);			//百位十位电量显示清除
 	}	
 }
@@ -97,10 +97,10 @@ void Battery_Show_UI(void)
 void Show_Clock_UI(void)
 {
 	MyRTC_ReadTime();	//读取tm日期时间结构体时钟数据
-	OLED_Printf(0,0,OLED_6X8,"%d-%d-%d",MyRTC_Time[0],MyRTC_Time[1],MyRTC_Time[2]);					//显示年-月-日
-	OLED_Printf(16,16,OLED_12X24,"%02d:%02d:%02d",MyRTC_Time[3],MyRTC_Time[4],MyRTC_Time[5]);		//显示时:分:秒
-	OLED_ShowString(0,48,"菜单",OLED_8X16);
-	OLED_ShowString(96,48,"设置",OLED_8X16);
+	OLED_Printf(CLOCK_DATE_X, CLOCK_DATE_Y, OLED_6X8, "%d-%d-%d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);					//显示年-月-日
+	OLED_Printf(CLOCK_TIME_X, CLOCK_TIME_Y, OLED_12X24, "%02d:%02d:%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);		//显示时:分:秒
+	OLED_ShowString(CLOCK_MENU_TEXT_X, CLOCK_MENU_TEXT_Y, "菜单", OLED_8X16);
+	OLED_ShowString(CLOCK_SET_TEXT_X, CLOCK_SET_TEXT_Y, "设置", OLED_8X16);
 	Battery_Show_UI();
 }
 
@@ -261,7 +261,7 @@ uint8_t MenuFlag = 2; 		//菜单图标位置标志位
 uint8_t Pre_item;			//当前项
 uint8_t Target_item;		//目标项目
 uint8_t Pre_x;				//上一次x的坐标
-uint8_t move_step = 4;		//图标移动步长
+uint8_t move_step = MENU_SLIDE_STEP;		//图标移动步长
 uint8_t move_stateFlag = 1;		//1:开始移动，0:停止移动
 
 /*
@@ -270,7 +270,7 @@ uint8_t move_stateFlag = 1;		//1:开始移动，0:停止移动
 void Menu_Animation(void)
 {
 	OLED_Clear();
-	OLED_ShowImage(42,10,44,44,Frame);			//菜单选择框
+	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);			//菜单选择框
 	//OLED_ShowImage(48,16,32,32,Menu_Graph);		//菜单图标
 
 	//菜单整体左移
@@ -280,7 +280,7 @@ void Menu_Animation(void)
 		if(Pre_x == 0)				//前回图标移动至x=0处
 		{
 			Pre_item++;				//菜单移动到下一项
-			Pre_x = 48;				//前回坐标更新为x=48
+			Pre_x = MENU_ICON_BASE_X;				//前回坐标更新为x=48
 			move_stateFlag = 0;		//停止移动
 		}
 	}
@@ -289,42 +289,42 @@ void Menu_Animation(void)
 	if(Pre_item > Target_item)
 	{
 		Pre_x += move_step;
-		if(Pre_x == 96)			//前回图标移动至x=96处
+		if(Pre_x == MENU_ICON_BASE_X * 2)			//前回图标移动至x=96处
 		{
 			Pre_item--;			//菜单移动到上一项
-			Pre_x = 48;			//前回坐标更新为x=48
+			Pre_x = MENU_ICON_BASE_X;			//前回坐标更新为x=48
 			move_stateFlag = 0;	//停止移动
 		}
 	}
 
 	if(Pre_item >= 1)			//第一项及以后的菜单选项
 	{
-		OLED_ShowImage(Pre_x-48,16,32,32,Menu_Graph[Pre_item-1]);	//显示前一个菜单图标
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//显示前一个菜单图标
 	}
 	if(Pre_item >= 2)			//第二项及以后的菜单选项
 	{
-		OLED_ShowImage(Pre_x-96,16,32,32,Menu_Graph[Pre_item-2]);	//显示上上个图标
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-2]);	//显示上上个图标
 	}
 
 	/*保证图标滑动的连续性*/
-	OLED_ShowImage(Pre_x,16,32,32,Menu_Graph[Pre_item]);		//显示选中的菜单图标
-	OLED_ShowImage(Pre_x+48,16,32,32,Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
-	OLED_ShowImage(Pre_x+96,16,32,32,Menu_Graph[Pre_item+2]);	//显示选中图标后第二个图标
+	OLED_ShowImage(Pre_x, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//显示选中的菜单图标
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);	//显示选中图标后第二个图标
 
 	OLED_Update();
 }
 
 void MenuToFunction_Animation(void)
 {
-	for(uint8_t i=0; i<=6; i++)
+	for(uint8_t i=0; i<=MENU_ENTER_FRAMES; i++)
 	{
 		OLED_Clear();				//清屏
 		if(Pre_item >= 1)			//当前选项及以后的菜单选项时
 		{
 			/*保证图标滑动的连续性*/
-			OLED_ShowImage(Pre_x-48,16+i*8,32,32,Menu_Graph[Pre_item-1]);	//
-			OLED_ShowImage(Pre_x,16+i*8,32,32,Menu_Graph[Pre_item]);		//显示选中的菜单图标
-			OLED_ShowImage(Pre_x+48,16+i*8,32,32,Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
+			OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//
+			OLED_ShowImage(Pre_x, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//显示选中的菜单图标
+			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
 
 		}
 		
@@ -372,7 +372,7 @@ uint8_t Menu_Page(void)
 			MenuFlag--;				//菜单项向右滚动
 			if(MenuFlag <= 0) 
 			{
-				MenuFlag = 7; 		//cursor move to [水平仪]
+				MenuFlag = MENU_CURSOR_MAX; 		//cursor move to [水平仪]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -381,9 +381,9 @@ uint8_t Menu_Page(void)
 			Direct_Flag = 2;		//下一项
 			move_stateFlag = 1;		//开始移动
 			MenuFlag ++;			//菜单项向左滚动
-			if(MenuFlag >= 8)
+			if(MenuFlag >= MENU_CURSOR_MAX + 1)
 			{
-				MenuFlag = 1; 		//cursor move to [返回]
+				MenuFlag = MENU_CURSOR_MIN; 		//cursor move to [返回]
 			}
 		}
 		else if(KeyNum == 3) 		//Key3: press to confirmation
@@ -489,10 +489,10 @@ uint8_t start_timing_flag = 0;     /* 计时标志：1-开始计时 0-停止计�
 void Show_StopClock_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);			//返回图标
-	OLED_Printf(32,20,OLED_8X16,"%02d:%02d:%02d",hour,min,sec);		//时分秒显示
-	OLED_ShowString(8,44,"开始",OLED_8X16);
-	OLED_ShowString(48,44,"停止",OLED_8X16);
-	OLED_ShowString(88,44,"清除",OLED_8X16);
+	OLED_Printf(STOPCLK_TIME_X, STOPCLK_TIME_Y, OLED_8X16, "%02d:%02d:%02d", hour, min, sec);		//时分秒显示
+	OLED_ShowString(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, "开始", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "停止", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, "清除", OLED_8X16);
 }
 
 //秒数自增函数
@@ -501,21 +501,21 @@ void StopClock_Tick(void)
 	//start_timing_flag = 0;
 	static uint16_t Timer_count;
 	Timer_count++;
-	if(Timer_count >= 1000)		//每隔1秒进行时间递增
+	if(Timer_count >= STOPCLK_1S_TICKS)		//每隔1秒进行时间递增
 	{
 		Timer_count = 0;
 		if(start_timing_flag == 1)
 		{	
 			sec++;
-			if(sec >= 60)
+			if(sec >= STOPCLK_SEC_MAX)
 			{
 				sec = 0;
 				min++;
-				if(min >= 60)
+				if(min >= STOPCLK_MIN_MAX)
 				{
 					min = 0;
 					hour++;
-					if(hour >= 99)
+					if(hour >= STOPCLK_HOUR_MAX)
 					{
 						hour = 0;
 					}
@@ -625,20 +625,20 @@ int StopClock(void)
 			case 2: 		//[开始]图标处
 				Show_StopClock_UI();
 				//start_timing_flag = 1;
-				OLED_ReverseArea(8,44,32,16);
+				OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;
 			case 3:			//[停止]图标处
 				Show_StopClock_UI();
 				//start_timing_flag = 0;
-				OLED_ReverseArea(48,44,32,16);
+				OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;	
 			case 4:			//[清除]图标处
 				Show_StopClock_UI();
 				//start_timing_flag = 0;
 				//hour = min = sec = 0;
-				OLED_ReverseArea(88,44,32,16);
+				OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;
 		}
@@ -759,14 +759,14 @@ int flashlight_Func(void)
 
 /********************************MPU6050************************************/
 
-float delta = 0.005;                 /* 采样周期，单位秒 */
-float a = 0.9;                       /* 互补滤波系数，范围0~1，越大陀螺仪权重越高 */
+float delta = MPU_SAMPLE_PERIOD_S;      /* 采样周期，单位秒 */
+float a = MPU_FILTER_ALPHA;             /* 互补滤波系数，范围0~1，越大陀螺仪权重越高 */
 int16_t ax,ay,az;                    /* 加速度计X、Y、Z轴原始数据 */
 int16_t gx,gy,gz;                   /* 陀螺仪X、Y、Z轴原始数据 */
 float roll_a,pitch_a;               /* 加速度计计算的横滚角和俯仰角 */
 float roll_g,pitch_g,yaw_g;         /* 陀螺仪计算的横滚角、俯仰角、偏航角 */
 float Roll=0.0,Pitch=0.0,Yaw=0.0;    /* 融合后的欧拉角 */
-double Pi = 3.1415927;
+double Pi = 3.1415927;  /* 圆周率 */
 
 /**
   * @brief MPU6050欧拉角解算（互补滤波算法）
@@ -777,7 +777,7 @@ double Pi = 3.1415927;
   */
 void MPU6050_Calculation_Euler_angles(void)
 {
-	Delay_ms(5);									//采样周期为5ms
+	Delay_ms(MPU_SAMPLE_DELAY_MS);								//采样周期为5ms
 	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);		//传地址方式，返回陀螺仪加速度值
 	/*陀螺仪欧拉角计算*/
 	roll_g = Roll + (float)gx*delta;				//横滚角x轴
@@ -929,42 +929,42 @@ int Game(void)
 void Show_emoji_UI(void)
 {
 	//闭眼
-	for(uint8_t i=0; i<=3; i++)
+	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
 	{
 		OLED_Clear();
 		//左眉毛
-		OLED_ShowImage(30,10+i,16,16,eyebrow[0]);
+		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[0]);
 		//右眉毛
-		OLED_ShowImage(82,10+i,16,16,eyebrow[1]);
+		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[1]);
 		//左眼
-		OLED_DrawEllipse(40,32,6,6-i,1);
+		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
 		//右眼
-		OLED_DrawEllipse(88,32,6,6-i,1);
+		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
 		//嘴巴
-		OLED_ShowImage(54,40,20,20,mouth);
+		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
 		OLED_Update();
-		Delay_ms(100);
+		Delay_ms(EMOJI_BLINK_DELAY_MS);
 	}
 
 	//睁眼
-	for(uint8_t i=0; i<=3; i++)
+	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
 	{
 		OLED_Clear();
 		//左眉毛
-		OLED_ShowImage(30,13-i,16,16,eyebrow[0]);
+		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[0]);
 		//右眉毛
-		OLED_ShowImage(82,13-i,16,16,eyebrow[1]);
+		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[1]);
 		//左眼
-		OLED_DrawEllipse(40,32,6,3+i,1);
+		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
 		//右眼
-		OLED_DrawEllipse(88,32,6,3+i,1);
+		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
 		//嘴巴
-		OLED_ShowImage(54,40,20,20,mouth);
+		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
 		OLED_Update();
-		Delay_ms(100);
+		Delay_ms(EMOJI_BLINK_DELAY_MS);
 	}
 
-	Delay_ms(500);	
+	Delay_ms(EMOJI_BLINK_GAP_MS);	
 }
 
 int Emoji_Func(void)
@@ -991,20 +991,20 @@ int Emoji_Func(void)
 */
 void Show_Gradienter_UI(void)
 {
-	int16_t x = 64-Roll;
-	int16_t y = 32+Pitch;
+	int16_t x = GRADIENTER_CENTER_X - Roll;
+	int16_t y = GRADIENTER_CENTER_Y + Pitch;
 	MPU6050_Calculation_Euler_angles();					//计算欧拉角
-	OLED_DrawCircle(64,32,30,OLED_UNFILLED);			//绘制水平仪外围圆
-	int16_t dx = x - 64;								//计算水平仪内实心圆相对大圆心的x坐标
-	int16_t dy = y - 32;								//计算水平仪内实心圆相对大圆心的y坐标	
+	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);			//绘制水平仪外围圆
+	int16_t dx = x - GRADIENTER_CENTER_X;				//计算水平仪内实心圆相对大圆心的x坐标
+	int16_t dy = y - GRADIENTER_CENTER_Y;				//计算水平仪内实心圆相对大圆心的y坐标	
 	float distance = sqrtf(dx*dx + dy*dy);				//计算实心圆距离大圆心的距离
-	if(distance > 26.0f)
+	if(distance > GRADIENTER_BOUNDARY_R)
 	{
-		float scale = 26.0f / distance;					//计算缩放比例
-		x = 64 + (dx * scale);							//计算水平仪内实心圆的x坐标
-		y = 32 + (dy * scale);							//计算水平仪内实心圆的y坐标
+		float scale = GRADIENTER_BOUNDARY_R / distance;	//计算缩放比例
+		x = GRADIENTER_CENTER_X + (dx * scale);			//计算水平仪内实心圆的x坐标
+		y = GRADIENTER_CENTER_Y + (dy * scale);			//计算水平仪内实心圆的y坐标
 	}
-	OLED_DrawCircle(x,y,4,OLED_FILLED);	//绘制水平仪内实心圆
+	OLED_DrawCircle(x, y, GRADIENTER_INNER_R, OLED_FILLED);	//绘制水平仪内实心圆
 	OLED_Update();			//刷新屏幕
 }
 

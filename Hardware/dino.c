@@ -1,13 +1,11 @@
 #include "stm32f10x.h"                  // Device header
 #include "OLED.h"
 #include "Key.h"
-#include "OLED.h"
 #include <stdlib.h>
 #include <math.h>
 #include "Delay.h"
 #include "menu.h"
-
-#define JUMP_HEIGHT 29                    /* 小恐龙跳跃最大高度 */
+#include "dino.h"
 
 extern double Pi;
 
@@ -53,7 +51,7 @@ void Game_Init(void)
   */
 void Show_Score(void)
 {
-    OLED_ShowNum(96,0,Dino_Score,5,OLED_6X8);
+    OLED_ShowNum(SCORE_DISPLAY_X, SCORE_DISPLAY_Y, Dino_Score, 5, OLED_6X8);
 }
 
 /*
@@ -62,26 +60,26 @@ void Show_Score(void)
 */
 void Show_Ground(void)
 {
-    if(Dino_GroundPos < 128)
+    if(Dino_GroundPos < DINO_SCREEN_WIDTH)
     {
         //地面1
-        for(uint8_t i=0; i<128; i++)
+        for(uint8_t i=0; i<DINO_SCREEN_WIDTH; i++)
         {
             //从第Dino_GroundPos格开始的128格复制到显存数组中
-            OLED_DisplayBuf[7][i] = Ground[Dino_GroundPos+i]; //Dino_GroundPos在循环中不变，循环结束后累加
+            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[Dino_GroundPos+i]; //Dino_GroundPos在循环中不变，循环结束后累加
         }
     }
     else   
     {
         //地面2
-        for(uint8_t i=0; i<255-Dino_GroundPos; i++)   //先算256像素的地面还剩多少格：255 - Dino_GroundPos
+        for(uint8_t i=0; i<GROUND_TEXTURE_LEN-1-Dino_GroundPos; i++)   //先算256像素的地面还剩多少格
         {
-            OLED_DisplayBuf[7][i] = Ground[i+Dino_GroundPos];
+            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[i+Dino_GroundPos];
         }
         //地面1
-        for(uint8_t i=255-Dino_GroundPos; i<128; i++)   //屏幕剩下的位置用"地面"开头补齐，起始下标就是 255-Dino_GroundPos，一直补到 127 
+        for(uint8_t i=GROUND_TEXTURE_LEN-1-Dino_GroundPos; i<DINO_SCREEN_WIDTH; i++)   //屏幕剩下的位置用"地面"开头补齐
         {
-            OLED_DisplayBuf[7][i] = Ground[i-(255-Dino_GroundPos)]; //把下标"折回"到地面开头 
+            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[i-(GROUND_TEXTURE_LEN-1-Dino_GroundPos)]; //把下标"折回"到地面开头 
         }
     }
 
@@ -98,18 +96,18 @@ struct Object_Position Barr;
   */
 void Show_Barrier(void)
 {
-    if(Dino_BarrierPos >= 143)
+    if(Dino_BarrierPos >= BARRIER_MAX_POS - 1)
     {
-        Dino_BarrierFlag = rand()%3; //生成0~2的随机数
+        Dino_BarrierFlag = rand() % BARRIER_TYPE_COUNT; //生成0~2的随机数
     }
     //以屏幕右下角为坐标原点向左为正方向计算X坐标
-    OLED_ShowImage(127-Dino_BarrierPos,44,16,18,Barrier[Dino_BarrierFlag]);
+    OLED_ShowImage(DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos, DINO_GROUND_Y, BARRIER_WIDTH, BARRIER_HEIGHT, Barrier[Dino_BarrierFlag]);
 
     /*障碍物边界值*/
-    Barr.minX = 127-Dino_BarrierPos;
-    Barr.maxX = 143-Dino_BarrierPos;
-    Barr.minY = 44;
-    Barr.maxY = 62;
+    Barr.minX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos;
+    Barr.maxX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos + BARRIER_WIDTH;
+    Barr.minY = DINO_GROUND_Y;
+    Barr.maxY = DINO_GROUND_Y_END;
 }
 
 /**
@@ -119,7 +117,7 @@ void Show_Barrier(void)
   */
 void Show_Cloud(void)
 {
-    OLED_ShowImage(127-Dino_CloudPos,9,16,8,Cloud);
+    OLED_ShowImage(DINO_SCREEN_WIDTH - 1 - Dino_CloudPos, CLOUD_Y_POS, CLOUD_WIDTH, CLOUD_HEIGHT, Cloud);
 }
 
 
@@ -138,31 +136,31 @@ void Show_Dino(void)
     if(KeyNum == 1 && Dino_JumpFlag == 0)
     {
         Dino_JumpFlag = 1;
-        Dino_JumpPos = 29;
+        Dino_JumpPos = DINO_JUMP_HEIGHT;
     }
 
     if(Dino_JumpFlag == 0)
     {
         if(Dino_CloudPos%2 == 0)
         {
-            OLED_ShowImage(0,44,16,18,Dino[0]);
+            OLED_ShowImage(DINO_X_POS, DINO_GROUND_Y, DINO_WIDTH, DINO_HEIGHT, Dino[0]);
         }
         else
         {
-            OLED_ShowImage(0,44,16,18,Dino[1]);
+            OLED_ShowImage(DINO_X_POS, DINO_GROUND_Y, DINO_WIDTH, DINO_HEIGHT, Dino[1]);
         }
     }
     else
     {
-        Dino_JumpPos = JUMP_HEIGHT * sin((float)(Pi * Dino_JumpCount/1000));
-        OLED_ShowImage(0,44-Dino_JumpPos,16,18,Dino[2]);
+        Dino_JumpPos = DINO_JUMP_HEIGHT * sin((float)(Pi * Dino_JumpCount / DINO_JUMP_DURATION));
+        OLED_ShowImage(DINO_X_POS, DINO_GROUND_Y - Dino_JumpPos, DINO_WIDTH, DINO_HEIGHT, Dino[2]);
     }
 
     /*小恐龙边界值*/
-    dino.minX = 0;
-    dino.maxX = 16;
-    dino.minY = 44-Dino_JumpPos;
-    dino.maxY = 62-Dino_JumpPos;
+    dino.minX = DINO_X_POS;
+    dino.maxX = DINO_WIDTH;
+    dino.minY = DINO_GROUND_Y - Dino_JumpPos;
+    dino.maxY = DINO_GROUND_Y_END - Dino_JumpPos;
 }
 
 /**
@@ -200,33 +198,33 @@ void dino_tick(void)
     Dino_GroundCount++;
     Dino_CloudCount++;
 
-    if(Dino_ScoreCount >= 100)  //0.1秒变化一次分数值
+    if(Dino_ScoreCount >= SCORE_TICK_PERIOD)  //0.1秒变化一次分数值
     {
         Dino_ScoreCount=0;
         Dino_Score++;
     }
 
-    if(Dino_GroundCount >= 20)
+    if(Dino_GroundCount >= GROUND_MOVE_PERIOD)
     {
         Dino_GroundCount = 0;
         Dino_GroundPos++;
         Dino_BarrierPos++;
-        if(Dino_GroundPos >= 256)
+        if(Dino_GroundPos >= GROUND_TEXTURE_LEN)
         {
             Dino_GroundPos = 0;
         }
 
-        if(Dino_BarrierPos >= 144)
+        if(Dino_BarrierPos >= BARRIER_MAX_POS)
         {
             Dino_BarrierPos = 0;
         }
     }
 
-    if(Dino_CloudCount >= 50)
+    if(Dino_CloudCount >= CLOUD_MOVE_PERIOD)
     {
         Dino_CloudCount = 0;
         Dino_CloudPos++;
-        if(Dino_CloudPos > 200)
+        if(Dino_CloudPos > CLOUD_MAX_POS)
         {
             Dino_CloudPos = 0;
         }
@@ -235,7 +233,7 @@ void dino_tick(void)
     if(Dino_JumpFlag == 1) 
     {
         Dino_JumpCount++;
-        if(Dino_JumpCount >= 1000)
+        if(Dino_JumpCount >= DINO_JUMP_DURATION)
         {
             Dino_JumpFlag = 0;
             Dino_JumpCount = 0;

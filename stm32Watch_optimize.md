@@ -306,26 +306,385 @@ void TIM2_IRQHandler(void) {
 
 ### 4.3 📐 幻数（Magic Number）抽取为宏
 
-**涉及文件：** `Hardware/dino.c`, `Hardware/menu.c`  
-**问题：** 多处直接使用硬编码数字：
+**涉及文件：** `Hardware/dino.c`, `Hardware/menu.c`, `Hardware/Key.c`  
+**问题：** 代码中存在 **40+ 处硬编码数字**，分布在游戏逻辑、UI 布局、定时参数、电池计算等多个模块。阅读代码时无法直观理解数字含义，修改参数时需要逐文件搜索，极易遗漏。
 
-| 位置 | 值 | 含义 |
-|------|-----|------|
-| dino.c:229 | 200 | 云朵最大 X 位置 |
-| dino.c:83 | 144 | 障碍物最大 X 位置 |
-| dino.c:84-85 | 44, 62 | 地面 Y 范围 |
-| dino.c:81-82 | 0, 16 | 恐龙 X 范围 |
-| menu.c:305-306 | 44, 62 | 地面 Y 范围（镜像） |
+**影响：**
+- **可读性差：** `143`、`200`、`3276` 等数字脱离上下文后毫无意义
+- **维护风险：** 同一个值（如障碍物 Y 范围 `44~62`）在 `dino.c` 和 `menu.c` 中各写一遍，改一处忘另一处导致画面错位
+- **调试困难：** 无法通过宏名搜索引用点，只能全文搜数字（数字还会出现在其他无关位置）
+
+---
+
+#### 4.3.1 全部幻数清单（按模块分类）
+
+**① 游戏屏幕几何参数（dino.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| dino.c:106,148,152,158 | `16` | 恐龙/障碍物宽度(px) | `OLED_ShowImage` 的 Width 参数 |
+| dino.c:106,148,152,158 | `18` | 恐龙/障碍物高度(px) | `OLED_ShowImage` 的 Height 参数 |
+| dino.c:106,148,152,158 | `44` | 地面 Y 起始坐标 | 恐龙和障碍物的 Y 基准 |
+| dino.c:112,165 | `62` | 地面 Y 结束坐标 | 44 + 18 = 62 |
+| dino.c:109,158,162 | `0` | 恐龙 X 坐标 | 恐龙固定在屏幕最左侧 |
+| dino.c:163 | `16` | 恐龙右边界 | 0 + 16 = 16（与宽度重复） |
+| dino.c:122 | `9` | 云朵 Y 坐标 | 云朵显示位置 |
+| dino.c:122 | `8` | 云朵高度(px) | 云朵位图高度 |
+| dino.c:56 | `96` | 分数显示 X 坐标 | |
+| dino.c:56 | `0` | 分数显示 Y 坐标 | |
+
+**② 游戏物理/定时参数（dino.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| dino.c:229 | `200` | 云朵最大 X 位置 | 超过后归零（环绕） |
+| dino.c:101,219 | `144` | 障碍物最大 X 位置 | 超过后重新生成 |
+| dino.c:65,68,77,82 | `128` | OLED 屏幕宽度(px) | SSD1306 屏幕宽度 |
+| dino.c:77,82,214 | `256` | 地面纹理长度(px) | 地面位图总像素数 |
+| dino.c:103 | `3` | 障碍物类型数量 | `rand()%3` 的模数 |
+| dino.c:203 | `100` | 分数递增周期 | 每 100 个 tick（100ms）加 1 分 |
+| dino.c:209 | `20` | 地面移动周期 | 每 20 个 tick 移动 1 像素 |
+| dino.c:225 | `50` | 云朵移动周期 | 每 50 个 tick 移动 1 像素 |
+| dino.c:238 | `1000` | 跳跃持续时间(ms) | 跳跃动画总时长 |
+| dino.c:10 | `29` | 跳跃最大高度(px) | 已有宏 `JUMP_HEIGHT` ✅ |
+| dino.c:71 | `7` | OLED 显存 Page 索引 | `OLED_DisplayBuf[7][i]` 最后一页 |
+
+**③ UI 布局参数（menu.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| menu.c:100 | `0,0` | 日期显示坐标 | 年月日起始位置 |
+| menu.c:101 | `16,16` | 时间显示坐标 | 时分秒起始位置 |
+| menu.c:102 | `0,48` | "菜单"文字坐标 | |
+| menu.c:103 | `96,48` | "设置"文字坐标 | |
+| menu.c:273 | `42,10` | 菜单选择框坐标 | |
+| menu.c:273 | `44,44` | 菜单选择框尺寸 | |
+| menu.c:283,295 | `48` | 菜单图标基准 X | 图标中心位置 |
+| menu.c:264 | `4` | 菜单滑动步长(px) | 每帧移动像素数 |
+| menu.c:319 | `6` | 菜单进场动画帧数 | |
+| menu.c:319 | `8` | 菜单进场动画步距(px) | 每帧上移像素数 |
+
+**④ 秒表参数（menu.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| menu.c:504 | `1000` | 秒表 1s 周期 | 1000 个 tick = 1 秒 |
+| menu.c:510,514 | `60` | 秒/分进位阈值 | 60 进制 |
+| menu.c:518 | `99` | 小时最大值 | 小时上限（2 位显示） |
+| menu.c:492 | `32,20` | 秒表时间显示坐标 | |
+| menu.c:493 | `8,44` | "开始"按钮坐标 | |
+| menu.c:494 | `48,44` | "停止"按钮坐标 | |
+| menu.c:495 | `88,44` | "清除"按钮坐标 | |
+
+**⑤ 按键参数（Key.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| Key.c:157 | `20` | 按键消抖周期(ms) | 20ms 扫描一次 |
+| Key.c:129,134 | `1000` | 长按判定阈值(ms) | 按住 ≥1s 为长按 |
+
+**⑥ 电池/ADC 参数（menu.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| menu.c:47 | `50` | 电池刷新周期(帧) | 每 50 帧采样一次 |
+| menu.c:54 | `16` | ADC 过采样次数 | 取 16 次均值 |
+| menu.c:64 | `4092` | ADC 满量程值 | 12-bit ADC 最大值 |
+| menu.c:64 | `3276` | 电池空电压 ADC 值 | 2.64V 对应的 ADC 值 |
+| menu.c:64 | `100` | 电量百分比基数 | |
+| menu.c:78,83,89 | `110,0` | 电池图标坐标 | |
+| menu.c:78,83,89 | `16,16` | 电池图标尺寸 | |
+| menu.c:84 | `113` | 电池电量条 X 起始 | |
+| menu.c:84 | `5` | 电池电量条 Y 起始 | |
+| menu.c:84 | `10` | 电池电量条宽度 | |
+| menu.c:84 | `6` | 电池电量条高度 | |
+
+**⑦ MPU6050/水平仪参数（menu.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| menu.c:762 | `0.005` | 采样周期(秒) | 5ms 采样间隔 |
+| menu.c:763 | `0.9` | 互补滤波系数 | 陀螺仪权重 |
+| menu.c:769 | `3.1415927` | 圆周率 π | |
+| menu.c:780 | `5` | 采样延时(ms) | 与 delta 对应 |
+| menu.c:994 | `64` | 水平仪圆心 X | 屏幕中心 |
+| menu.c:995 | `32` | 水平仪圆心 Y | 屏幕中心 |
+| menu.c:997 | `30` | 水平仪外圆半径 | |
+| menu.c:1001 | `26.0f` | 小圆运动边界半径 | 小圆不超过此范围 |
+| menu.c:1007 | `4` | 水平仪小圆半径 | |
+
+**⑧ 表情动画参数（menu.c）**
+
+| 位置 | 值 | 含义 | 说明 |
+|------|-----|------|------|
+| menu.c:932,950 | `3` | 眨眼动画帧数 | 闭眼/睁眼各 4 帧 |
+| menu.c:936,954 | `30` | 左眉 X 坐标 | |
+| menu.c:937,955 | `82` | 右眉 X 坐标 | |
+| menu.c:936,954 | `10` | 眉毛 Y 起始坐标 | |
+| menu.c:940,958 | `40` | 左眼圆心 X | |
+| menu.c:941,959 | `88` | 右眼圆心 X | |
+| menu.c:940-941,958-959 | `32` | 眼睛圆心 Y | |
+| menu.c:940-941,958-959 | `6` | 眼睛椭圆 X 半径 | |
+| menu.c:940,958 | `6` | 眼睛椭圆 Y 最大半径 | |
+| menu.c:943,961 | `54` | 嘴巴 X 坐标 | |
+| menu.c:943,961 | `40` | 嘴巴 Y 坐标 | |
+| menu.c:943,961 | `20,20` | 嘴巴尺寸 | |
+| menu.c:946,963 | `100` | 眨眼帧延时(ms) | |
+| menu.c:967 | `500` | 眨眼间隔延时(ms) | |
+
+---
+
+#### 4.3.2 推荐宏定义（按模块分组）
+
+建议在 `Hardware/dino.h` 和 `Hardware/menu.h` 中分别定义，避免全局污染：
 
 ```c
-// ✅ 建议
-#define CLOUD_MAX_POS       200
-#define BARRIER_MAX_POS     144
-#define GROUND_Y_MIN        44
-#define GROUND_Y_MAX        62
-#define DINO_WIDTH          16
-#define DINO_HEIGHT         18
+/* ================================================================
+ *  Hardware/dino.h — 恐龙游戏参数
+ * ================================================================ */
+
+/* ---- 屏幕几何 ---- */
+#define DINO_SCREEN_WIDTH       128     /* OLED 屏幕宽度(px) */
+#define DINO_SCREEN_PAGES       8       /* OLED 显存页数 (64px / 8 = 8 pages) */
+#define DINO_GROUND_PAGE        7       /* 地面所在的显存 Page 索引 */
+
+/* ---- 恐龙 ---- */
+#define DINO_WIDTH              16      /* 恐龙位图宽度(px) */
+#define DINO_HEIGHT             18      /* 恐龙位图高度(px) */
+#define DINO_X_POS              0       /* 恐龙固定 X 坐标 */
+#define DINO_GROUND_Y           44      /* 地面 Y 起始坐标（恐龙/障碍物基准） */
+#define DINO_GROUND_Y_END       62      /* 地面 Y 结束坐标 (44 + 18) */
+#define DINO_JUMP_HEIGHT        29      /* 跳跃最大高度(px) — 已有宏，保留 */
+#define DINO_JUMP_DURATION      1000    /* 跳跃持续时间(ms)，决定正弦曲线周期 */
+
+/* ---- 障碍物 ---- */
+#define BARRIER_WIDTH           16      /* 障碍物宽度(px) */
+#define BARRIER_HEIGHT          18      /* 障碍物高度(px) */
+#define BARRIER_MAX_POS         144     /* 障碍物最大 X 位置，超出后重新生成 */
+#define BARRIER_TYPE_COUNT      3       /* 障碍物类型数量 (rand()%3) */
+
+/* ---- 云朵 ---- */
+#define CLOUD_WIDTH             16      /* 云朵位图宽度(px) */
+#define CLOUD_HEIGHT            8       /* 云朵位图高度(px) */
+#define CLOUD_Y_POS             9       /* 云朵 Y 坐标 */
+#define CLOUD_MAX_POS           200     /* 云朵最大 X 位置，超出后归零环绕 */
+
+/* ---- 地面纹理 ---- */
+#define GROUND_TEXTURE_LEN      256     /* 地面纹理总长度(px) */
+
+/* ---- 定时参数（单位：tick，1 tick = 1ms）---- */
+#define SCORE_TICK_PERIOD       100     /* 分数递增周期：每 100ms +1 分 */
+#define GROUND_MOVE_PERIOD      20      /* 地面/障碍物移动周期：每 20ms 移 1px */
+#define CLOUD_MOVE_PERIOD       50      /* 云朵移动周期：每 50ms 移 1px */
+
+/* ---- UI 布局 ---- */
+#define SCORE_DISPLAY_X         96      /* 分数显示 X 坐标 */
+#define SCORE_DISPLAY_Y         0       /* 分数显示 Y 坐标 */
 ```
+
+```c
+/* ================================================================
+ *  Hardware/menu.h — 菜单/秒表/电池/表情/水平仪参数
+ * ================================================================ */
+
+/* ---- 首页时钟 ---- */
+#define CLOCK_DATE_X            0       /* 日期显示 X */
+#define CLOCK_DATE_Y            0       /* 日期显示 Y */
+#define CLOCK_TIME_X            16      /* 时间显示 X */
+#define CLOCK_TIME_Y            16      /* 时间显示 Y */
+#define CLOCK_MENU_TEXT_X       0       /* "菜单"文字 X */
+#define CLOCK_MENU_TEXT_Y       48      /* "菜单"文字 Y */
+#define CLOCK_SET_TEXT_X        96      /* "设置"文字 X */
+#define CLOCK_SET_TEXT_Y        48      /* "设置"文字 Y */
+
+/* ---- 菜单动画 ---- */
+#define MENU_CURSOR_MIN         1       /* 菜单光标最小值 */
+#define MENU_CURSOR_MAX         7       /* 菜单光标最大值（7个菜单项） */
+#define MENU_FRAME_X            42      /* 选择框 X */
+#define MENU_FRAME_Y            10      /* 选择框 Y */
+#define MENU_FRAME_W            44      /* 选择框宽度 */
+#define MENU_FRAME_H            44      /* 选择框高度 */
+#define MENU_ICON_BASE_X        48      /* 图标基准 X 位置 */
+#define MENU_ICON_SIZE          32      /* 菜单图标尺寸(32x32) */
+#define MENU_ICON_SPACING       48      /* 图标间距(px) */
+#define MENU_SLIDE_STEP         4       /* 菜单滑动步长(px/帧) */
+#define MENU_ENTER_FRAMES       6       /* 进场动画帧数 */
+#define MENU_ENTER_STEP         8       /* 进场动画步距(px/帧) */
+
+/* ---- 秒表 ---- */
+#define STOPCLK_1S_TICKS        1000    /* 1秒 = 1000 个 tick */
+#define STOPCLK_SEC_MAX         60      /* 秒进位阈值 */
+#define STOPCLK_MIN_MAX         60      /* 分进位阈值 */
+#define STOPCLK_HOUR_MAX        99      /* 小时最大值（2位显示限制） */
+#define STOPCLK_TIME_X          32      /* 秒表时间显示 X */
+#define STOPCLK_TIME_Y          20      /* 秒表时间显示 Y */
+#define STOPCLK_BTN_START_X     8       /* "开始"按钮 X */
+#define STOPCLK_BTN_STOP_X      48      /* "停止"按钮 X */
+#define STOPCLK_BTN_CLEAR_X     88      /* "清除"按钮 X */
+#define STOPCLK_BTN_Y           44      /* 按钮统一 Y 坐标 */
+#define STOPCLK_BTN_W           32      /* 按钮宽度 */
+#define STOPCLK_BTN_H           16      /* 按钮高度 */
+
+/* ---- 按键 ---- */
+#define KEY_DEBOUNCE_MS         20      /* 按键消抖周期(ms) */
+#define KEY_LONG_PRESS_MS       1000    /* 长按判定阈值(ms) */
+
+/* ---- 电池 ---- */
+#define BATTERY_REFRESH_FRAMES  50      /* 电池刷新周期(帧) */
+#define BATTERY_ADC_SAMPLES     16      /* ADC 过采样次数 */
+#define BATTERY_ADC_MAX         4092    /* 12-bit ADC 满量程值 */
+#define BATTERY_ADC_EMPTY       3276    /* 电池空(2.64V)对应 ADC 值 */
+#define BATTERY_ICON_X          110     /* 电池图标 X */
+#define BATTERY_ICON_Y          0       /* 电池图标 Y */
+#define BATTERY_ICON_W          16      /* 电池图标宽度 */
+#define BATTERY_ICON_H          16      /* 电池图标高度 */
+#define BATTERY_BAR_X           113     /* 电量条 X 起始 */
+#define BATTERY_BAR_Y           5       /* 电量条 Y 起始 */
+#define BATTERY_BAR_W           10      /* 电量条最大宽度 */
+#define BATTERY_BAR_H           6       /* 电量条高度 */
+
+/* ---- MPU6050 / 水平仪 ---- */
+#define MPU_SAMPLE_PERIOD_S     0.005f  /* 采样周期(秒) */
+#define MPU_FILTER_ALPHA        0.9f    /* 互补滤波系数（陀螺仪权重） */
+#define MPU_SAMPLE_DELAY_MS     5       /* 采样延时(ms)，与 SAMPLE_PERIOD 对应 */
+#define GRADIENTER_CENTER_X     64      /* 水平仪外圆圆心 X */
+#define GRADIENTER_CENTER_Y     32      /* 水平仪外圆圆心 Y */
+#define GRADIENTER_OUTER_R      30      /* 水平仪外圆半径 */
+#define GRADIENTER_BOUNDARY_R   26.0f   /* 小圆运动边界半径 */
+#define GRADIENTER_INNER_R      4       /* 水平仪小圆半径 */
+
+/* ---- 表情动画 ---- */
+#define EMOJI_BLINK_FRAMES      3       /* 眨眼动画帧数（0~3 共4帧） */
+#define EMOJI_L_EYEBROW_X       30      /* 左眉 X */
+#define EMOJI_R_EYEBROW_X       82      /* 右眉 X */
+#define EMOJI_EYEBROW_Y         10      /* 眉毛 Y 起始 */
+#define EMOJI_L_EYE_CX          40      /* 左眼圆心 X */
+#define EMOJI_R_EYE_CX          88      /* 右眼圆心 X */
+#define EMOJI_EYE_CY            32      /* 眼睛圆心 Y */
+#define EMOJI_EYE_RX            6       /* 眼睛椭圆 X 半径 */
+#define EMOJI_EYE_RY_MAX        6       /* 眼睛椭圆 Y 最大半径（睁眼） */
+#define EMOJI_MOUTH_X           54      /* 嘴巴 X */
+#define EMOJI_MOUTH_Y           40      /* 嘴巴 Y */
+#define EMOJI_MOUTH_W           20      /* 嘴巴宽度 */
+#define EMOJI_MOUTH_H           20      /* 嘴巴高度 */
+#define EMOJI_BLINK_DELAY_MS    100     /* 眨眼帧延时(ms) */
+#define EMOJI_BLINK_GAP_MS      500     /* 眨眼间隔延时(ms) */
+```
+
+---
+
+#### 4.3.3 修改前后对比示例
+
+**示例 1：障碍物显示（dino.c `Show_Barrier()`）**
+
+```c
+// ❌ 当前代码 — 5 个幻数，无法一眼理解含义
+void Show_Barrier(void)
+{
+    if(Dino_BarrierPos >= 143)                      // 143? 为什么不是144?
+    {
+        Dino_BarrierFlag = rand()%3;                // 3 是什么?
+    }
+    OLED_ShowImage(127-Dino_BarrierPos,44,16,18,Barrier[Dino_BarrierFlag]);
+    Barr.minX = 127-Dino_BarrierPos;
+    Barr.maxX = 143-Dino_BarrierPos;
+    Barr.minY = 44;
+    Barr.maxY = 62;
+}
+
+// ✅ 优化后 — 语义清晰，修改参数只需改宏定义
+void Show_Barrier(void)
+{
+    if(Dino_BarrierPos >= BARRIER_MAX_POS - 1)
+    {
+        Dino_BarrierFlag = rand() % BARRIER_TYPE_COUNT;
+    }
+    OLED_ShowImage(DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos,
+                   DINO_GROUND_Y, BARRIER_WIDTH, BARRIER_HEIGHT,
+                   Barrier[Dino_BarrierFlag]);
+    Barr.minX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos;
+    Barr.maxX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos + BARRIER_WIDTH;
+    Barr.minY = DINO_GROUND_Y;
+    Barr.maxY = DINO_GROUND_Y + BARRIER_HEIGHT;
+}
+```
+
+**示例 2：跳跃物理（dino.c `Show_Dino()`）**
+
+```c
+// ❌ 当前代码
+Dino_JumpPos = JUMP_HEIGHT * sin((float)(Pi * Dino_JumpCount/1000));
+//                                                       ^^^^ 1000是什么?
+
+// ✅ 优化后
+Dino_JumpPos = DINO_JUMP_HEIGHT * sinf(Pi * Dino_JumpCount / DINO_JUMP_DURATION);
+```
+
+**示例 3：电池百分比计算（menu.c `Battery_Show_UI()`）**
+
+```c
+// ❌ 当前代码 — 4092 和 3276 含义不明
+Battery_Capacity = (AD_Value - ((2.64/3.3)*4092))*100 / (4092-3276);
+
+// ✅ 优化后 — 一眼看出是"ADC值减去空电压，除以满量程范围"
+Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100
+                 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
+```
+
+**示例 4：秒表进位（menu.c `StopClock_Tick()`）**
+
+```c
+// ❌ 当前代码
+sec++;
+if(sec >= 60) { sec = 0; min++; if(min >= 60) { min = 0; hour++; if(hour >= 99) { hour = 0; } } }
+
+// ✅ 优化后 — 宏名直接表达业务语义
+sec++;
+if(sec >= STOPCLK_SEC_MAX) {
+    sec = 0;
+    min++;
+    if(min >= STOPCLK_MIN_MAX) {
+        min = 0;
+        hour++;
+        if(hour >= STOPCLK_HOUR_MAX) { hour = 0; }
+    }
+}
+```
+
+---
+
+#### 4.3.4 推荐文件组织
+
+```
+Hardware/
+├── dino.h      ← 游戏相关宏 + 函数声明
+├── dino.c      ← #include "dino.h"，使用宏替代幻数
+├── menu.h      ← 菜单/UI/电池/秒表相关宏 + 函数声明
+├── menu.c      ← #include "menu.h"，使用宏替代幻数
+├── Key.h       ← 按键相关宏（消抖周期、长按阈值）
+└── Key.c       ← #include "Key.h"
+```
+
+**原则：** 宏定义放在**使用它的模块对应的头文件**中，而非集中在一个公共头文件。这样：
+- 模块内聚性强，改参数只看一个头文件
+- 避免全局头文件膨胀
+- 不同模块可以有同名宏（如 `WIDTH` 在不同模块含义不同）
+
+**例外：** 跨模块共享的参数（如 `DINO_GROUND_Y` 同时被 `dino.c` 和 `menu.c` 使用）应放在 `dino.h` 中，`menu.c` 通过 `#include "dino.h"` 引用。
+
+---
+
+#### 4.3.5 注意事项
+
+| 要点 | 说明 |
+|------|------|
+| **不要过度抽取** | 循环计数器 `for(i=0; i<128; i++)` 中的 `128` 如果就是屏幕宽度，用宏；如果是"遍历数组前 128 个元素"这种纯索引语义，不必强行抽宏 |
+| **浮点宏用 `f` 后缀** | `#define ALPHA 0.9f` 而非 `0.9`，避免隐式 double 提升浪费 Cortex-M3 算力 |
+| **宏名全大写 + 下划线** | 遵循嵌入式 C 通用命名规范，一眼区分宏和变量 |
+| **关联值要体现关系** | `DINO_GROUND_Y_END` 应定义为 `(DINO_GROUND_Y + DINO_HEIGHT)` 而非硬编码 `62`，改一个值自动联动 |
+| **头文件加 `#ifndef` 守卫** | 防止重复包含 |
+
+**收益：** 修改游戏难度（如调整移动速度）只需改头文件中的宏定义，无需逐行搜索代码；新成员阅读代码时，宏名即文档。
 
 ---
 
