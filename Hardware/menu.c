@@ -169,6 +169,7 @@ uint8_t First_Page_Clock(void)
 			default:
 				break;
 		}
+		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }
 
@@ -471,7 +472,7 @@ uint8_t Menu_Page(void)
 			else if(Direct_Flag == 2){Set_Selection(move_stateFlag,MenuFlag-2,MenuFlag-1);}
 		}
 		//Menu_Animation();
-		
+		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }
 
@@ -1023,6 +1024,7 @@ uint8_t Gradienter_Func(void)
 		}	
 		OLED_Clear();
 		Show_Gradienter_UI();	// 内部已调用 OLED_Update()
+		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }
 
