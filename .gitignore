@@ -34,3 +34,13 @@ DebugConfig/
 
 # Keil Cleanup Script (optional)
 keilkill.bat
+
+# Binary Libraries (CMSIS, HAL, etc.)
+*.lib
+*.a
+*.o
+*.obj
+*.elf
+*.hex
+*.bin
+*.srec
