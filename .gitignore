@@ -4,7 +4,12 @@ Listings/
 
 # Keil Project Files (User-specific)
 *.uvguix.*
+*.uvoptx
 *.uvoptx.bak
+*.uvprojx.bak
+
+# Keil RTE (Run-Time Environment)
+RTE/
 
 # Keil Build Artifacts
 *.axf
