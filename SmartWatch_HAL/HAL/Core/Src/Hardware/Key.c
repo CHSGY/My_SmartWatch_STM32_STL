@@ -21,7 +21,7 @@
 /* USER CODE END Header */
 
 /* Includes ------------------------------------------------------------------*/
-#include "Key.h"
+#include "Hardware/Key.h"
 
 /* USER CODE BEGIN Includes */
 
