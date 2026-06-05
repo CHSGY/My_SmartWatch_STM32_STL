@@ -9,10 +9,11 @@
   * LED硬件连接：
   *   LED1 (Flashlight) - PA0
   *   LED2 - PB12
+  *   LED3 (Power) - PB13
   *
   * 功能说明：
   *   - GPIO时钟和引脚配置由CubeMX的MX_GPIO_Init()完成
-  *   - 提供LED1/LED2的开关和翻转控制
+  *   - 提供LED1/LED2/LED3的开关和翻转控制
   *
   ******************************************************************************
   */
@@ -141,6 +142,43 @@ void LED2_Turn(void)
     HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
   }
   /* USER CODE END LED2_Turn */
+}
+
+/**
+  * @brief  LED3开启（PB13高电平）
+  * @param  无
+  * @retval 无
+  */
+void LED3_ON(void)
+{
+  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+}
+
+/**
+  * @brief  LED3关闭（PB13低电平）
+  * @param  无
+  * @retval 无
+  */
+void LED3_OFF(void)
+{
+  HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+}
+
+/**
+  * @brief  LED3状态翻转
+  * @param  无
+  * @retval 无
+  */
+void LED3_Turn(void)
+{
+  if (HAL_GPIO_ReadPin(LED3_GPIO_Port, LED3_Pin) == GPIO_PIN_RESET)
+  {
+    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+  }
+  else
+  {
+    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+  }
 }
 
 /* USER CODE BEGIN 1 */

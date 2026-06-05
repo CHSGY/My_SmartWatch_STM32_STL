@@ -9,6 +9,7 @@
   * LED硬件连接：
   *   LED1 (Flashlight) - PA0
   *   LED2 - PB12
+  *   LED3 (Power) - PB13
   *
   ******************************************************************************
   */
@@ -55,6 +56,21 @@ void LED2_OFF(void);
   * @brief  LED2状态翻转
   */
 void LED2_Turn(void);
+
+/**
+  * @brief  LED3开启（PB13高电平）
+  */
+void LED3_ON(void);
+
+/**
+  * @brief  LED3关闭（PB13低电平）
+  */
+void LED3_OFF(void);
+
+/**
+  * @brief  LED3状态翻转
+  */
+void LED3_Turn(void);
 
 #ifdef __cplusplus
 }
