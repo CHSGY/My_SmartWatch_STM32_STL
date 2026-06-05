@@ -97,6 +97,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   Key_Init();
   OLED_Init();
+  HAL_TIM_Base_Start_IT(&htim2);	/* 启动TIM2中断，1ms周期调用KeyTick等回调 */
   /* USER CODE END 2 */
 
   /* Infinite loop */
