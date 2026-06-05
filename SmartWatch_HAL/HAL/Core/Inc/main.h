@@ -81,7 +81,11 @@ void Error_Handler(void);
 #define OLED_SDA_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
-
+/* 电源控制引脚别名（对应CubeMX中的LED2/LED3引脚命名） */
+#define POWER_CONTROL_Pin       	LED3_Pin			/* PB13: MCU电源PMOS控制 */
+#define POWER_CONTROL_GPIO_Port 	LED3_GPIO_Port
+#define ADC_CONTROL_Pin         	LED2_Pin			/* PB12: ADC/高压PMOS控制 */
+#define ADC_CONTROL_GPIO_Port   	LED2_GPIO_Port
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus
