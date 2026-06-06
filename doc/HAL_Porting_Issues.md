@@ -256,3 +256,180 @@ void delay_us(uint32_t us)
 - [ ] `main.c` 中添加 `MPU6050_Init()` 调用
 - [ ] `HAL.uvprojx` 中添加新文件到工程分组
 - [ ] 串口或 OLED 输出验证 MPU6050 通信是否正常（`MPU6050_GetID()` 应返回 `0x68`）
+
+---
+
+## 问题三：RTC 驱动移植 — 编译器版本与 HAL API 变化
+
+### 背景
+
+STD 工程的 `MyRTC` 模块使用 LSE（32.768kHz 外部晶振）作为 RTC 时钟源，通过秒计数器模式（`RTC_SetCounter` / `RTC_GetCounter`）存储时间，使用 C 标准库的 `mktime` / `localtime` 进行时间转换。
+
+HAL 库的 RTC API 有重大变化：
+- 时间存储从**秒计数器**改为 **Time + Date 结构体**分离模式
+- 使用 `RTC_TimeTypeDef`（时分秒）和 `RTC_DateTypeDef`（年月日星期）
+- 备份寄存器 API 从 `BKP_ReadBackupRegister` 改为 `HAL_RTCEx_BKUPRead`
+
+### 报错现象
+
+编译时报错：
+
+```
+../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_adc.c(787): error: unknown type name '__weak'
+__weak void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
+^
+../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c(200): error: unknown type name '__weak'
+__weak void HAL_MspInit(void)
+^
+...（75 errors total）
+```
+
+### 原因分析
+
+**问题 1：编译器版本不兼容**
+
+- Keil 默认选择了 **ARM Compiler V6.7 (ARMCLANG/Clang)** 编译器
+- `__weak` 是 ARM Compiler 5 (ARMCC) 的特有关键字，用于定义弱符号函数
+- ARMCLANG 基于 Clang/LLVM，不支持 `__weak` 语法，应使用 `__attribute__((weak))`
+- STM32 HAL 库官方针对 ARMCC V5 设计，与 V6 存在语法差异
+
+**问题 2：HAL 库 RTC API 变化**
+
+| 功能 | 标准库 (STD) | HAL 库 |
+|------|-------------|--------|
+| 时间存储 | 秒计数器 `RTC_SetCounter` / `RTC_GetCounter` | `HAL_RTC_SetTime` + `HAL_RTC_SetDate` |
+| 时间结构 | `time_t` + `struct tm` | `RTC_TimeTypeDef` + `RTC_DateTypeDef` |
+| 备份寄存器 | `BKP_ReadBackupRegister` / `BKP_WriteBackupRegister` | `HAL_RTCEx_BKUPRead` / `HAL_RTCEx_BKUPWrite` |
+| 预分频器 | `RTC_SetPrescaler(32768-1)` | `RTC_InitTypeDef.AsynchPrediv = 32767` |
+| 时钟配置 | 手动代码配置 LSE | **CubeMX 配置（推荐）** |
+
+**问题 3：MX_RTC_Init() 会覆盖 RTC 保持的时间**
+
+CubeMX 生成的 `MX_RTC_Init()` 每次复位都会设置默认时间（0:0:0），会覆盖掉 RTC 硬件电路由电池保持的时间。需要使用备份寄存器判断是否首次配置。
+
+### 解决方案
+
+#### 1. 编译器版本切换
+
+在 Keil 工程设置中切换到 ARM Compiler 5：
+
+1. 点击工程设置（Options for Target）
+2. 选择 **Target** 标签页
+3. 在 **ARM Compiler** 下拉框中选择 **"Use default compiler version 5"**
+
+> **原因：** STM32 HAL 库官方使用 ARMCC V5 语法，切换编译器是最简单可靠的解决方案。
+
+#### 2. CubeMX 配置 RTC
+
+HAL 库推荐通过 CubeMX 配置硬件资源，而非手动编写初始化代码：
+
+**CubeMX 配置项：**
+
+| 配置项 | 设置值 | 说明 |
+|--------|--------|------|
+| LSE 时钟源 | RCC_LSE_ON | 外部 32.768kHz 晶振 |
+| RTC 时钟选择 | RCC_RTCCLKSOURCE_LSE | RTC 使用 LSE |
+| 预分频器 | AsynchPrediv = 32767 | 32768-1，得到 1Hz |
+| RTC Calendar | 启用 | 生成 Time/Date 初始化代码 |
+
+**CubeMX 自动生成的代码：**
+
+- `HAL_RTC_MspInit()`：使能 PWR/BKP 时钟、备份域访问、RTC 时钟
+- `MX_RTC_Init()`：配置预分频器、设置默认时间
+- `RTC_HandleTypeDef hrtc`：全局 RTC 句柄
+
+#### 3. MyRTC 模块移植设计
+
+**保持接口兼容：**
+
+```c
+// MyRTC.h（接口不变）
+extern int16_t MyRTC_Time[6];  // 年、月、日、时、分、秒
+void MyRTC_Init(void);
+void MyRTC_SetTime(void);
+void MyRTC_ReadTime(void);
+```
+
+**内部实现变化：**
+
+```c
+// MyRTC.c
+void MyRTC_SetTime(void)
+{
+    RTC_TimeTypeDef sTime = {0};
+    RTC_DateTypeDef sDate = {0};
+    
+    // 从 MyRTC_Time 数组填充结构体
+    sTime.Hours = MyRTC_Time[3];
+    sTime.Minutes = MyRTC_Time[4];
+    sTime.Seconds = MyRTC_Time[5];
+    sDate.Year = MyRTC_Time[0] - 2000;  // HAL: 0-99
+    sDate.Month = MyRTC_Time[1];
+    sDate.Date = MyRTC_Time[2];
+    
+    HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN);
+    HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BIN);
+}
+```
+
+#### 4. 备份寄存器逻辑调整
+
+**修改 `MX_RTC_Init()`（USER CODE BEGIN Check_RTC_BKUP 区域）：**
+
+```c
+/* USER CODE BEGIN Check_RTC_BKUP */
+if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) == 0xA5A5)
+{
+    return;  // 非首次配置，跳过默认时间设置
+}
+/* USER CODE END Check_RTC_BKUP */
+```
+
+**`MyRTC_Init()` 完成首次配置：**
+
+```c
+void MyRTC_Init(void)
+{
+    if (HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1) != 0xA5A5)
+    {
+        MyRTC_SetTime();  // 设置默认时间
+        HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, 0xA5A5);
+    }
+}
+```
+
+**执行流程：**
+
+| 场景 | MX_RTC_Init() | MyRTC_Init() | 结果 |
+|------|---------------|--------------|------|
+| 首次上电 | BKUP != 0xA5A5 → 设置 0:0:0 | BKUP != 0xA5A5 → 设置默认时间 → 写入 0xA5A5 | RTC = MyRTC_Time 默认值 |
+| 非首次上电 | BKUP == 0xA5A5 → return 跳过 | BKUP == 0xA5A5 → 不操作 | RTC 保持上次时间 |
+
+### 涉及文件
+
+| 操作 | 文件 | 说明 |
+|------|------|------|
+| 新建 | `Core/Inc/MyRTC.h` | RTC 驱动头文件（接口兼容） |
+| 新建 | `Core/Src/MyRTC.c` | RTC 驱动实现（HAL API） |
+| 修改 | `Core/Src/main.c` | USER CODE 区域添加 MyRTC.h 和 MyRTC_Init() |
+| 修改 | `Core/Src/main.c` | USER CODE BEGIN Check_RTC_BKUP 添加备份寄存器检查 |
+| 配置 | `HAL.ioc` | CubeMX 配置 LSE + RTC |
+| 生成 | `Core/Src/stm32f1xx_hal_msp.c` | CubeMX 生成 HAL_RTC_MspInit() |
+| 配置 | `MDK-ARM/HAL.uvprojx` | 编译器切换为 ARM Compiler 5 |
+
+### 关键 API 对照表
+
+| 标准库 | HAL 库 | 说明 |
+|--------|--------|------|
+| `BKP_ReadBackupRegister(BKP_DR1)` | `HAL_RTCEx_BKUPRead(&hrtc, RTC_BKP_DR1)` | 读取备份寄存器 |
+| `BKP_WriteBackupRegister(BKP_DR1, val)` | `HAL_RTCEx_BKUPWrite(&hrtc, RTC_BKP_DR1, val)` | 写入备份寄存器 |
+| `RTC_SetCounter(cnt)` | `HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BIN)` | 设置时间 |
+| `RTC_GetCounter()` | `HAL_RTC_GetTime(&hrtc, &sTime, RTC_FORMAT_BIN)` | 获取时间 |
+| `RTC_SetPrescaler(32767)` | `RTC_InitTypeDef.AsynchPrediv = 32767` | 预分频器（CubeMX 配置） |
+| `PWR_BackupAccessCmd(ENABLE)` | `HAL_PWR_EnableBkUpAccess()` | 备份域访问（CubeMX 生成） |
+
+### 备注
+
+- HAL 库的 RTC 使用 Time + Date 结构体，不再支持秒计数器模式
+- 年份范围：HAL 为 0-99（对应 2000-2099），需在 MyRTC.c 中做 +2000/-2000 转换
+- CubeMX 配置 LSE 后，即使主电源掉电，RTC 仍可由备用电池供电保持走时
