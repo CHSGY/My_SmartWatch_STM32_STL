@@ -430,6 +430,46 @@
               <FileType>1</FileType>
               <FilePath>..\Core\Src\MyRTC.c</FilePath>
             </File>
+            <File>
+              <FileName>menu.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\Hardware\menu.c</FilePath>
+            </File>
+            <File>
+              <FileName>AD.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\Hardware\AD.c</FilePath>
+            </File>
+            <File>
+              <FileName>MPU6050.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\Hardware\MPU6050.c</FilePath>
+            </File>
+            <File>
+              <FileName>power.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\power.c</FilePath>
+            </File>
+            <File>
+              <FileName>delay.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\delay.c</FilePath>
+            </File>
+            <File>
+              <FileName>MyI2C.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\MyI2C.c</FilePath>
+            </File>
+            <File>
+              <FileName>SetTime_stub.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\Hardware\SetTime_stub.c</FilePath>
+            </File>
+            <File>
+              <FileName>dino_stub.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Core\Src\Hardware\dino_stub.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
