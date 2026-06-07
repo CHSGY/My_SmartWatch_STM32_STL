@@ -433,3 +433,103 @@ void MyRTC_Init(void)
 - HAL 库的 RTC 使用 Time + Date 结构体，不再支持秒计数器模式
 - 年份范围：HAL 为 0-99（对应 2000-2099），需在 MyRTC.c 中做 +2000/-2000 转换
 - CubeMX 配置 LSE 后，即使主电源掉电，RTC 仍可由备用电池供电保持走时
+
+---
+
+## 问题四：menu.c 编译报错 — missing closing quote（编码问题复发）
+
+### 报错现象
+
+编译 `menu.c` 时出现 `missing closing quote` 错误，集中在秒表页面 `Show_StopClock_UI()` 函数中的中文字符串字面量（第 475~476 行），共 3 个错误：
+
+```
+..\Core\Src\Hardware\menu.c(475): error:  #8: missing closing quote
+    OLED_ShowString(
+TOPCLK_BTN_START_X, 
+TOPCLK_BTN_Y, "寮€濮?", OLED_8X16);
+..\Core\Src\Hardware\menu.c(476): error:  #165: too few arguments in function call
+    OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "鍋滄", OLED_8X16);
+..\Core\Src\Hardware\menu.c(476): error:  #18: expected a ")"
+    OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "鍋滄", OLED_8X16);
+..\Core\Src\Hardware\menu.c: 0 warnings, 30 errors
+```
+
+> **与问题一的区别：** 问题一是 `OLED_Data.c`（30 个错误），本次是 `menu.c`（3 个错误）。根因相同，但涉及不同的文件和修复步骤。
+
+### 原因分析
+
+**根本原因与问题一相同：源文件编码与 Keil 编译器预期的编码不匹配。**
+
+问题一修复时，仅对 `OLED_Data.c` 进行了编码转换，但 `menu.c` 仍保持 UTF-8 编码。当 ARMCC V5.06 以 GBK 编码读取 `menu.c` 时，UTF-8 的中文字节被错误解析。
+
+**为什么部分中文不报错？**
+
+`menu.c` 中有多处中文字符串（如第 97 行 `"菜单"`、第 98 行 `"设置"`），但编译器仅在第 475~476 行报错。原因是某些 UTF-8 字节序列恰好构成有效的 GBK 双字节对，虽然显示为乱码，但不会破坏字符串解析：
+
+| 汉字 | UTF-8 字节 | GBK 解析 | 编译结果 |
+|------|-----------|---------|---------|
+| `菜单` | `E8 8F 9C E5 8D 95` | `E88F` + `9CE5` + `8D95`（均为有效 GBK 双字节） | ✅ 乱码但不报错 |
+| `开始` | `E5 BC 80 E5 A7 8B` | `E5BC` + `80`（单字节 €）+ `E5A7` + `8B`（悬挂） | ❌ 引号断裂 |
+| `停止` | `E5 81 9C E6 AD A2` | `E581` + `9CE6` + `ADA2`（部分有效） | ❌ 参数数量错乱 |
+
+**关键区别：** `菜单` 的 UTF-8 字节恰好两两配对形成有效 GBK，而 `开始` 的第二个字节 `80` 在 GBK 中是单字节字符（€ 符号），打断了双字节解析流程。
+
+### 解决方案
+
+由于问题一已添加 `--no-multibyte-chars` 编译器标志，本次只需将 `menu.c` 从 UTF-8 转换为 GBK 编码。
+
+#### 使用 PowerShell 转换编码
+
+```powershell
+$path = "SmartWatch_HAL\HAL\Core\Src\Hardware\menu.c"
+$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+$gbk = [System.Text.Encoding]::GetEncoding("GBK")
+[System.IO.File]::WriteAllText($path, $content, $gbk)
+```
+
+#### 验证转换结果
+
+转换后可检查关键行的字节是否匹配 GBK 编码：
+
+```powershell
+$bytes = [System.IO.File]::ReadAllBytes($path)
+$gbk = [System.Text.Encoding]::GetEncoding("GBK")
+
+# "开始" 应为 BF AA CA BC
+# "停止" 应为 CD A3 D6 B9
+# "清除" 应为 C7 E5 B3 FD
+# "菜单" 应为 B2 CB B5 A5
+# "设置" 应为 C9 E8 D6 C3
+
+Write-Output "'开始' GBK: $(($gbk.GetBytes('开始') | ForEach-Object { '{0:X2}' -f $_ }) -join ' ')"
+```
+
+#### 编译验证
+
+转换后重新编译，确认 0 Error(s)：
+
+```
+Build target 'HAL'
+compiling menu.c...
+linking...
+"HAL\HAL.axf" - 0 Error(s), 0 Warning(s).
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | 文件编码从 UTF-8 转为 GBK |
+
+### 经验总结
+
+**HAL 工程中所有包含中文字符串字面量的 `.c` 文件都必须使用 GBK 编码。** 在问题一和问题四之后，需排查所有 UTF-8 源文件：
+
+| 文件 | 编码 | 中文字符串 | 状态 |
+|------|------|-----------|------|
+| `OLED_Data.c` | GBK | 是（中文字符数组） | ✅ 已修复（问题一） |
+| `menu.c` | GBK | 是（UI 文本） | ✅ 已修复（问题四） |
+| `OLED.c` | UTF-8 | 否（仅注释含中文） | ✅ 无需处理 |
+| 其他 `.c` 文件 | UTF-8 | 否 | ✅ 无需处理 |
+
+> **注意：** 注释中的中文不影响编译，因为编译器在词法分析前会剥离注释。只有字符串字面量（双引号内的内容）需要正确的编码。
