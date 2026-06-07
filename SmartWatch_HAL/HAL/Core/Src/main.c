@@ -23,6 +23,8 @@
 /* USER CODE BEGIN Includes */
 #include "Hardware/Key.h"
 #include "Hardware/OLED.h"
+#include "Hardware/menu.h"
+#include "Hardware/MPU6050.h"
 #include "MyRTC.h"
 /* USER CODE END Includes */
 
@@ -49,7 +51,7 @@ RTC_HandleTypeDef hrtc;
 TIM_HandleTypeDef htim2;
 
 /* USER CODE BEGIN PV */
-
+extern uint8_t ClockUI_Move_Flag;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -102,8 +104,13 @@ int main(void)
   /* USER CODE BEGIN 2 */
   Key_Init();
   OLED_Init();
+  MPU6050_Init();
   MyRTC_Init();
-  HAL_TIM_Base_Start_IT(&htim2);	/* 启动TIM2中断，1ms周期调用KeyTick等回调 */
+  HAL_TIM_Base_Start_IT(&htim2);	/* 启动TIM2中断，1ms周期调用KeyTick/StopClock_Tick等回调 */
+  
+  OLED_Clear();
+  Show_Clock_UI();
+  OLED_Update();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -113,6 +120,18 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    OLED_Clear();
+    Battery_Show_UI();
+    OLED_Update();
+    ClockUI_Move_Flag = First_Page_Clock();
+    if(ClockUI_Move_Flag == 1)        //[菜单] 选项被选中
+    {
+      Menu_Page();                    //进入菜单页面
+    }
+    else if(ClockUI_Move_Flag == 2)   //[设置] 选项被选中
+    {
+      SettingPage();                  //进入设置页面
+    }
   }
   /* USER CODE END 3 */
 }
