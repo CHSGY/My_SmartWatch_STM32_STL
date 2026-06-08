@@ -461,9 +461,9 @@
               <FilePath>..\Core\Src\MyI2C.c</FilePath>
             </File>
             <File>
-              <FileName>SetTime_stub.c</FileName>
+              <FileName>SetTime.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Core\Src\Hardware\SetTime_stub.c</FilePath>
+              <FilePath>..\Core\Src\Hardware\SetTime.c</FilePath>
             </File>
             <File>
               <FileName>dino.c</FileName>

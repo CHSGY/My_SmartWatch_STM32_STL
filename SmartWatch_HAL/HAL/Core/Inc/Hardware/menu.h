@@ -208,7 +208,7 @@ void Show_Gradienter_UI(void);
 uint8_t Gradienter_Func(void);
 
 /**
-  * @brief SetTime主流程（stub，待SetTime模块迁移后替换）
+  * @brief SetTime主流程
   * @retval 0-返回
   */
 int SetTime_mainprocess(void);
