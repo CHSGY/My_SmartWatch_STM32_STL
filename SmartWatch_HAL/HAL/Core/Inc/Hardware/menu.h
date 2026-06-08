@@ -208,22 +208,6 @@ void Show_Gradienter_UI(void);
 uint8_t Gradienter_Func(void);
 
 /**
-  * @brief 恐龙游戏初始化（stub，待dino模块迁移后替换）
-  */
-void Game_Init(void);
-
-/**
-  * @brief 恐龙游戏主循环（stub，待dino模块迁移后替换）
-  * @retval 0-返回
-  */
-uint8_t Dino_game_Animation(void);
-
-/**
-  * @brief 恐龙游戏tick函数（中断调用）（stub，待dino模块迁移后替换）
-  */
-void dino_tick(void);
-
-/**
   * @brief SetTime主流程（stub，待SetTime模块迁移后替换）
   * @retval 0-返回
   */

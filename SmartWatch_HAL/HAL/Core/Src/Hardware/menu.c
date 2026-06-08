@@ -1,15 +1,15 @@
-/**
+ï»¿/**
   * @file           : menu.c
-  * @brief          : Ö÷²Ëµ¥¼°¹¦ÄÜÄ£¿é£¨HAL¿â°æ±¾£©
+  * @brief          : ä¸»èœå•åŠåŠŸèƒ½æ¨¡å—ï¼ˆHALåº“ç‰ˆæœ¬ï¼‰
   * @author         : CHSGY
   * @date           : 2026-06-07
   *
-  * @note           : ´Ó±ê×¼¿âmenu.cÒÆÖ²£¬Ö÷ÒªĞŞ¸Äµã£º
-  *                   1. Í·ÎÄ¼ş£ºstm32f10x.h ¡ú main.h, Delay.h ¡ú delay.h
-  *                   2. ÑÓÊ±º¯Êı£ºDelay_ms() ¡ú delay_ms()
-  *                   3. µçÔ´¿ØÖÆ£ºGPIOÖ±½Ó²Ù×÷ ¡ú powerÄ£¿é(Power_IsRunning/Power_Shutdown)
-  *                   4. ADC³õÊ¼»¯£ºAD_Init() ²»ÔÙĞèÒª£¨CubeMXÒÑÍê³ÉÅäÖÃ£©
-  *                   5. ÔİÎ´Ç¨ÒÆµÄÄ£¿é(SetTime/dino)ÒÔstubĞÎÊ½Ìá¹©£¬´ıºóĞøÇ¨ÒÆºóÌæ»»
+  * @note           : ä»æ ‡å‡†åº“menu.cç§»æ¤ï¼Œä¸»è¦ä¿®æ”¹ç‚¹ï¼š
+  *                   1. å¤´æ–‡ä»¶ï¼šstm32f10x.h â†’ main.h, Delay.h â†’ delay.h
+  *                   2. å»¶æ—¶å‡½æ•°ï¼šDelay_ms() â†’ delay_ms()
+  *                   3. ç”µæºæ§åˆ¶ï¼šGPIOç›´æ¥æ“ä½œ â†’ poweræ¨¡å—(Power_IsRunning/Power_Shutdown)
+  *                   4. ADCåˆå§‹åŒ–ï¼šAD_Init() ä¸å†éœ€è¦ï¼ˆCubeMXå·²å®Œæˆé…ç½®ï¼‰
+  *                   5. æš‚æœªè¿ç§»çš„æ¨¡å—(SetTime/dino)ä»¥stubå½¢å¼æä¾›ï¼Œå¾…åç»­è¿ç§»åæ›¿æ¢
   */
 
 #include "main.h"
@@ -21,21 +21,22 @@
 #include "delay.h"
 #include "Hardware/MPU6050.h"
 #include "Hardware/menu.h"
+#include "Hardware/dino.h"
 #include "power.h"
 #include <math.h>
 
-/********************º¯ÊıÉùÃ÷************************/
+/********************å‡½æ•°å£°æ˜************************/
 
-/*************************Ê×Ò³Ê±ÖÓ½çÃæ**********************************/
+/*************************é¦–é¡µæ—¶é’Ÿç•Œé¢**********************************/
 
-/* µç³ØµçÁ¿»º´æ£¬±ÜÃâÃ¿Ö¡¶¼×öADC²ÉÑù */
+/* ç”µæ± ç”µé‡ç¼“å­˜ï¼Œé¿å…æ¯å¸§éƒ½åšADCé‡‡æ · */
 static uint16_t cached_AD_Value = 0;
 static uint8_t Battery_Refresh_Cnt = 0;
 
 /*
-* @brief µç³ØµçÁ¿ÏÔÊ¾UI
-* @note  ÓÅ»¯£ºÃ¿50Ö¡²Å×öÒ»´ÎADC²ÉÑù£¨16´Î¾ùÖµ£©£¬ÆäÓàÖ¡Ê¹ÓÃ»º´æÖµ
-*        Ô­·½°¸Ã¿Ö¡3000´Î²ÉÑù£¬×èÈûÔ¼20ms£»ÓÅ»¯ºóÔ¼1ms
+* @brief ç”µæ± ç”µé‡æ˜¾ç¤ºUI
+* @note  ä¼˜åŒ–ï¼šæ¯50å¸§æ‰åšä¸€æ¬¡ADCé‡‡æ ·ï¼ˆ16æ¬¡å‡å€¼ï¼‰ï¼Œå…¶ä½™å¸§ä½¿ç”¨ç¼“å­˜å€¼
+*        åŸæ–¹æ¡ˆæ¯å¸§3000æ¬¡é‡‡æ ·ï¼Œé˜»å¡çº¦20msï¼›ä¼˜åŒ–åçº¦1ms
 */
 void Battery_Show_UI(void)
 {
@@ -44,10 +45,10 @@ void Battery_Show_UI(void)
 
 	Battery_Refresh_Cnt++;
 	if (Battery_Refresh_Cnt < BATTERY_REFRESH_FRAMES) {
-		/* Î´µ½²ÉÑùÖÜÆÚ£¬Ê¹ÓÃ»º´æÖµÖ±½ÓÏÔÊ¾ */
+		/* æœªåˆ°é‡‡æ ·å‘¨æœŸï¼Œä½¿ç”¨ç¼“å­˜å€¼ç›´æ¥æ˜¾ç¤º */
 		AD_Value = cached_AD_Value;
 	} else {
-		/* Ã¿50Ö¡²ÉÑùÒ»´Î£¬È¡16´Î¾ùÖµ */
+		/* æ¯50å¸§é‡‡æ ·ä¸€æ¬¡ï¼Œå–16æ¬¡å‡å€¼ */
 		Battery_Refresh_Cnt = 0;
 		uint32_t sum = 0;
 		for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
@@ -79,30 +80,30 @@ void Battery_Show_UI(void)
 		OLED_ClearArea(BATTERY_BAR_X + Battery_Capacity/10, BATTERY_BAR_Y, BATTERY_BAR_W - Battery_Capacity/10, BATTERY_BAR_H);
 		OLED_ClearArea(82,4,6,8);
 	}
-	else	//¸öÎ»Êı×ÖµçÁ¿ÏÔÊ¾
+	else	//ä¸ªä½æ•°å­—ç”µé‡æ˜¾ç¤º
 	{
 		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
-		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//µç³ØµçÁ¿UIÇå³ı
-		OLED_ClearArea(82,4,12,8);			//°ÙÎ»Ê®Î»µçÁ¿ÏÔÊ¾Çå³ı
+		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//ç”µæ± ç”µé‡UIæ¸…é™¤
+		OLED_ClearArea(82,4,12,8);			//ç™¾ä½åä½ç”µé‡æ˜¾ç¤ºæ¸…é™¤
 	}
 }
 
 
-//Ê×Ò³ÓÃ»§½çÃæ
+//é¦–é¡µç”¨æˆ·ç•Œé¢
 void Show_Clock_UI(void)
 {
-	MyRTC_ReadTime();	//¶ÁÈ¡tmÈÕÆÚÊ±¼ä½á¹¹ÌåÊ±ÖÓÊı¾İ
-	OLED_Printf(CLOCK_DATE_X, CLOCK_DATE_Y, OLED_6X8, "%d-%d-%d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);					//ÏÔÊ¾Äê-ÔÂ-ÈÕ
-	OLED_Printf(CLOCK_TIME_X, CLOCK_TIME_Y, OLED_12X24, "%02d:%02d:%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);		//ÏÔÊ¾Ê±:·Ö:Ãë
-	OLED_ShowString(CLOCK_MENU_TEXT_X, CLOCK_MENU_TEXT_Y, "²Ëµ¥", OLED_8X16);
-	OLED_ShowString(CLOCK_SET_TEXT_X, CLOCK_SET_TEXT_Y, "ÉèÖÃ", OLED_8X16);
+	MyRTC_ReadTime();	//è¯»å–tmæ—¥æœŸæ—¶é—´ç»“æ„ä½“æ—¶é’Ÿæ•°æ®
+	OLED_Printf(CLOCK_DATE_X, CLOCK_DATE_Y, OLED_6X8, "%d-%d-%d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);					//æ˜¾ç¤ºå¹´-æœˆ-æ—¥
+	OLED_Printf(CLOCK_TIME_X, CLOCK_TIME_Y, OLED_12X24, "%02d:%02d:%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);		//æ˜¾ç¤ºæ—¶:åˆ†:ç§’
+	OLED_ShowString(CLOCK_MENU_TEXT_X, CLOCK_MENU_TEXT_Y, "èœå•", OLED_8X16);
+	OLED_ShowString(CLOCK_SET_TEXT_X, CLOCK_SET_TEXT_Y, "è®¾ç½®", OLED_8X16);
 	Battery_Show_UI();
 }
 
-uint8_t Clockmoveflag = 1;	/* Ê×Ò³Ê±ÖÓÒ³Ãæ¹â±êÎ»ÖÃ£¬1:²Ëµ¥Ñ¡Ïî 2:ÉèÖÃÑ¡Ïî */
-static uint8_t KeyNum;            /* ÁÙÊ±°´¼ü¼üÂë±äÁ¿ */
+uint8_t Clockmoveflag = 1;	/* é¦–é¡µæ—¶é’Ÿé¡µé¢å…‰æ ‡ä½ç½®ï¼Œ1:èœå•é€‰é¡¹ 2:è®¾ç½®é€‰é¡¹ */
+static uint8_t KeyNum;            /* ä¸´æ—¶æŒ‰é”®é”®ç å˜é‡ */
 
-//°´¼ü¿ØÖÆÊ±ÖÓÒ³Ãæ¹â±êÒÆ¶¯Âß¼­ÊµÏÖ
+//æŒ‰é”®æ§åˆ¶æ—¶é’Ÿé¡µé¢å…‰æ ‡ç§»åŠ¨é€»è¾‘å®ç°
 uint8_t First_Page_Clock(void)
 {
 	while(1) 					//Get key's number continuely
@@ -114,7 +115,7 @@ uint8_t First_Page_Clock(void)
 			Clockmoveflag --;
 			if(Clockmoveflag <= 0) 
 			{
-				Clockmoveflag = 2; //cursor move to second item [ÉèÖÃ]
+				Clockmoveflag = 2; //cursor move to second item [è®¾ç½®]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -123,36 +124,36 @@ uint8_t First_Page_Clock(void)
 			Clockmoveflag ++;
 			if(Clockmoveflag >= 3)
 			{
-				Clockmoveflag = 1; //cursor move to first item [²Ëµ¥]
+				Clockmoveflag = 1; //cursor move to first item [èœå•]
 			}
 		}
-		else if(KeyNum == 3) 	//Key3: short press to [È·ÈÏ]
+		else if(KeyNum == 3) 	//Key3: short press to [ç¡®è®¤]
 		{
 			OLED_Clear();  			//Clear Screen
 			OLED_Update(); 			//ReFlash Screen
 			return Clockmoveflag; //return position of cursor
 		}
-		else if(KeyNum == 4) 	//Long Press Key3 ¡ú µçÔ´¿ØÖÆ
+		else if(KeyNum == 4) 	//Long Press Key3 â†’ ç”µæºæ§åˆ¶
 		{
 			/**
-			  * @note HAL°æ±¾£ºµçÔ´¿ØÖÆÓÉpowerÄ£¿é¹ÜÀí
-			  *   Ô­STD´úÂëÊ¹ÓÃGPIOÖ±½Ó²Ù×÷PB12/PB13
-			  *   ÏÖ¸ÄÎªÅĞ¶ÏÔËĞĞ×´Ì¬ºóÖ´ĞĞ¹Ø»ú
-			  *   Ô­Âß¼­ÖĞµÄ"ÇĞ»»¿ª»ú"ÔÚÊµ¼ÊÓ²¼şÖĞ²»¿ÉÊµÏÖ£¨¹Ø»úºóMCU¶ÏµçÎŞ·¨»Ö¸´£©
-			  *   Òò´Ë¼ò»¯Îª£º³¤°´ ¡ú ¹Ø»ú
+			  * @note HALç‰ˆæœ¬ï¼šç”µæºæ§åˆ¶ç”±poweræ¨¡å—ç®¡ç†
+			  *   åŸSTDä»£ç ä½¿ç”¨GPIOç›´æ¥æ“ä½œPB12/PB13
+			  *   ç°æ”¹ä¸ºåˆ¤æ–­è¿è¡ŒçŠ¶æ€åæ‰§è¡Œå…³æœº
+			  *   åŸé€»è¾‘ä¸­çš„"åˆ‡æ¢å¼€æœº"åœ¨å®é™…ç¡¬ä»¶ä¸­ä¸å¯å®ç°ï¼ˆå…³æœºåMCUæ–­ç”µæ— æ³•æ¢å¤ï¼‰
+			  *   å› æ­¤ç®€åŒ–ä¸ºï¼šé•¿æŒ‰ â†’ å…³æœº
 			  */
-			POWER_Shutdown();	//¹Ø»ú
+			POWER_Shutdown();	//å…³æœº
 		}
 
 		/******Key Function Control******/
 		switch(Clockmoveflag)
 		{
-			case 1: //[²Ëµ¥]
+			case 1: //[èœå•]
 				Show_Clock_UI();
 				OLED_ReverseArea(0,48,32,16);
 				OLED_Update();
 				break;
-			case 2: //[ÉèÖÃ]
+			case 2: //[è®¾ç½®]
 				Show_Clock_UI();
 				OLED_ReverseArea(96,48,32,16);
 				OLED_Update();
@@ -160,31 +161,31 @@ uint8_t First_Page_Clock(void)
 			default:
 				break;
 		}
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
+		__WFI();	//ç­‰å¾…ä¸­æ–­å”¤é†’ï¼Œé™ä½ç©ºé—²åŠŸè€—
 	}
 }
 
 
 
-/*************************ÉèÖÃÒ³Ãæ************************************/
-uint8_t ClockUI_Move_Flag;         /* ÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ±êÖ¾ */
+/*************************è®¾ç½®é¡µé¢************************************/
+uint8_t ClockUI_Move_Flag;         /* è®¾ç½®é¡µé¢å…‰æ ‡ä½ç½®æ ‡å¿— */
 
 /**
-  * @brief ÏÔÊ¾ÉèÖÃÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ˜¾ç¤ºè®¾ç½®é¡µé¢UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_Setting_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);				//ÏÔÊ¾·µ»ØÍ¼±ê
-	OLED_ShowString(0,16,"ÈÕÆÚÊ±¼äÉèÖÃ",OLED_8X16);	//ÏÔÊ¾[ÈÕÆÚÊ±¼äÉèÖÃ]
+	OLED_ShowImage(0,0,16,16,GoBack);				//æ˜¾ç¤ºè¿”å›å›¾æ ‡
+	OLED_ShowString(0,16,"æ—¥æœŸæ—¶é—´è®¾ç½®",OLED_8X16);	//æ˜¾ç¤º[æ—¥æœŸæ—¶é—´è®¾ç½®]
 }
 
-uint8_t SettingFlag = 1; 		//°´¼ü¹â±ê³õÊ¼Î»ÖÃÔÚ[·µ»Ø]Í¼±ê´¦
+uint8_t SettingFlag = 1; 		//æŒ‰é”®å…‰æ ‡åˆå§‹ä½ç½®åœ¨[è¿”å›]å›¾æ ‡å¤„
 
 uint8_t SettingPage(void)
 {
-	uint8_t Temp_SettingFlag = 0;		//·µ»ØÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ
+	uint8_t Temp_SettingFlag = 0;		//è¿”å›è®¾ç½®é¡µé¢å…‰æ ‡ä½ç½®
 	while(1) //Get key's number continuely
 	{
 		KeyNum = Key_GetNum(); //Get Key Number
@@ -194,7 +195,7 @@ uint8_t SettingPage(void)
 			SettingFlag--;
 			if(SettingFlag <= 0) 
 			{
-				SettingFlag = 2; //cursor move to second item [ÈÕÆÚÊ±¼äÉèÖÃ]
+				SettingFlag = 2; //cursor move to second item [æ—¥æœŸæ—¶é—´è®¾ç½®]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -203,7 +204,7 @@ uint8_t SettingPage(void)
 			SettingFlag ++;
 			if(SettingFlag >= 3)
 			{
-				SettingFlag = 1; //cursor move to first item [·µ»Ø]
+				SettingFlag = 1; //cursor move to first item [è¿”å›]
 			}
 		}
 		else if(KeyNum == 3) //Key3: press to confirmation
@@ -213,28 +214,28 @@ uint8_t SettingPage(void)
 			Temp_SettingFlag = SettingFlag;
 		}
 
-		if(Temp_SettingFlag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
+		if(Temp_SettingFlag == 1)				//å…‰æ ‡ä½ç½®ï¼šã€è¿”å›ã€‘
 		{
 			Temp_SettingFlag = 0;
 			OLED_Clear();
 			return 0;
 		}
-		else if(Temp_SettingFlag == 2)			//¹â±êÎ»ÖÃ£º¡¾ÈÕÆÚÊ±¼äÉèÖÃ¡¿
+		else if(Temp_SettingFlag == 2)			//å…‰æ ‡ä½ç½®ï¼šã€æ—¥æœŸæ—¶é—´è®¾ç½®ã€‘
 		{
 			Temp_SettingFlag = 0;
-			SetTime_mainprocess();				//µ÷ÓÃ[ÉèÖÃÈÕÆÚÊ±¼ä]º¯Êı£¨stub£¬´ıÇ¨ÒÆ£©
+			SetTime_mainprocess();				//è°ƒç”¨[è®¾ç½®æ—¥æœŸæ—¶é—´]å‡½æ•°ï¼ˆstubï¼Œå¾…è¿ç§»ï¼‰
 			OLED_Clear();
 		}
 
 		/******Background_Color of Function selection******/
 		switch(SettingFlag)
 		{
-			case 1: //[·µ»Ø]
+			case 1: //[è¿”å›]
 				Show_Setting_UI();
 				OLED_ReverseArea(0,0,16,16);
 				OLED_Update();
 				break;
-			case 2: //[ÈÕÆÚÊ±¼äÉèÖÃ]
+			case 2: //[æ—¥æœŸæ—¶é—´è®¾ç½®]
 				Show_Setting_UI();
 				OLED_ReverseArea(0,16,96,16);
 				OLED_Update();
@@ -245,61 +246,61 @@ uint8_t SettingPage(void)
 
 
 
-/********************************²Ëµ¥Ò³Ãæ************************************/
+/********************************èœå•é¡µé¢************************************/
 
-uint8_t MenuFlag = 2; 		//²Ëµ¥Í¼±êÎ»ÖÃ±êÖ¾Î»
+uint8_t MenuFlag = 2; 		//èœå•å›¾æ ‡ä½ç½®æ ‡å¿—ä½
 
-uint8_t Pre_item;			//µ±Ç°Ïî
-uint8_t Target_item;		//Ä¿±êÏîÄ¿
-uint8_t Pre_x;				//ÉÏÒ»´ÎxµÄ×ø±ê
-uint8_t move_step = MENU_SLIDE_STEP;		//Í¼±êÒÆ¶¯²½³¤
-uint8_t move_stateFlag = 1;		//1:¿ªÊ¼ÒÆ¶¯£¬0:Í£Ö¹ÒÆ¶¯
+uint8_t Pre_item;			//å½“å‰é¡¹
+uint8_t Target_item;		//ç›®æ ‡é¡¹ç›®
+uint8_t Pre_x;				//ä¸Šä¸€æ¬¡xçš„åæ ‡
+uint8_t move_step = MENU_SLIDE_STEP;		//å›¾æ ‡ç§»åŠ¨æ­¥é•¿
+uint8_t move_stateFlag = 1;		//1:å¼€å§‹ç§»åŠ¨ï¼Œ0:åœæ­¢ç§»åŠ¨
 
 /*
-*  ²Ëµ¥»¬¶¯¶¯»­ÏÔÊ¾º¯Êı
+*  èœå•æ»‘åŠ¨åŠ¨ç”»æ˜¾ç¤ºå‡½æ•°
 */
 void Menu_Animation(void)
 {
 	OLED_Clear();
-	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);			//²Ëµ¥Ñ¡Ôñ¿ò
+	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);			//èœå•é€‰æ‹©æ¡†
 
-	//²Ëµ¥ÕûÌå×óÒÆ
+	//èœå•æ•´ä½“å·¦ç§»
 	if(Pre_item < Target_item)
 	{
 		Pre_x -= move_step;
-		if(Pre_x == 0)				//Ç°»ØÍ¼±êÒÆ¶¯ÖÁx=0´¦
+		if(Pre_x == 0)				//å‰å›å›¾æ ‡ç§»åŠ¨è‡³x=0å¤„
 		{
-			Pre_item++;				//²Ëµ¥ÒÆ¶¯µ½ÏÂÒ»Ïî
-			Pre_x = MENU_ICON_BASE_X;				//Ç°»Ø×ø±ê¸üĞÂÎªx=48
-			move_stateFlag = 0;		//Í£Ö¹ÒÆ¶¯
+			Pre_item++;				//èœå•ç§»åŠ¨åˆ°ä¸‹ä¸€é¡¹
+			Pre_x = MENU_ICON_BASE_X;				//å‰å›åæ ‡æ›´æ–°ä¸ºx=48
+			move_stateFlag = 0;		//åœæ­¢ç§»åŠ¨
 		}
 	}
 
-	//²Ëµ¥ÕûÌåÓÒÒÆ
+	//èœå•æ•´ä½“å³ç§»
 	if(Pre_item > Target_item)
 	{
 		Pre_x += move_step;
-		if(Pre_x == MENU_ICON_BASE_X * 2)			//Ç°»ØÍ¼±êÒÆ¶¯ÖÁx=96´¦
+		if(Pre_x == MENU_ICON_BASE_X * 2)			//å‰å›å›¾æ ‡ç§»åŠ¨è‡³x=96å¤„
 		{
-			Pre_item--;			//²Ëµ¥ÒÆ¶¯µ½ÉÏÒ»Ïî
-			Pre_x = MENU_ICON_BASE_X;			//Ç°»Ø×ø±ê¸üĞÂÎªx=48
-			move_stateFlag = 0;	//Í£Ö¹ÒÆ¶¯
+			Pre_item--;			//èœå•ç§»åŠ¨åˆ°ä¸Šä¸€é¡¹
+			Pre_x = MENU_ICON_BASE_X;			//å‰å›åæ ‡æ›´æ–°ä¸ºx=48
+			move_stateFlag = 0;	//åœæ­¢ç§»åŠ¨
 		}
 	}
 
-	if(Pre_item >= 1)			//µÚÒ»Ïî¼°ÒÔºóµÄ²Ëµ¥Ñ¡Ïî
+	if(Pre_item >= 1)			//ç¬¬ä¸€é¡¹åŠä»¥åçš„èœå•é€‰é¡¹
 	{
-		OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//ÏÔÊ¾Ç°Ò»¸ö²Ëµ¥Í¼±ê
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//æ˜¾ç¤ºå‰ä¸€ä¸ªèœå•å›¾æ ‡
 	}
-	if(Pre_item >= 2)			//µÚ¶şÏî¼°ÒÔºóµÄ²Ëµ¥Ñ¡Ïî
+	if(Pre_item >= 2)			//ç¬¬äºŒé¡¹åŠä»¥åçš„èœå•é€‰é¡¹
 	{
-		OLED_ShowImage(Pre_x - MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-2]);	//ÏÔÊ¾ÉÏÉÏ¸öÍ¼±ê
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-2]);	//æ˜¾ç¤ºä¸Šä¸Šä¸ªå›¾æ ‡
 	}
 
-	/*±£Ö¤Í¼±ê»¬¶¯µÄÁ¬ĞøĞÔ*/
-	OLED_ShowImage(Pre_x, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//ÏÔÊ¾Ñ¡ÖĞµÄ²Ëµ¥Í¼±ê
-	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚÒ»¸öÍ¼±ê
-	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚ¶ş¸öÍ¼±ê
+	/*ä¿è¯å›¾æ ‡æ»‘åŠ¨çš„è¿ç»­æ€§*/
+	OLED_ShowImage(Pre_x, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//æ˜¾ç¤ºé€‰ä¸­çš„èœå•å›¾æ ‡
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//æ˜¾ç¤ºé€‰ä¸­å›¾æ ‡åç¬¬ä¸€ä¸ªå›¾æ ‡
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);	//æ˜¾ç¤ºé€‰ä¸­å›¾æ ‡åç¬¬äºŒä¸ªå›¾æ ‡
 
 	OLED_Update();
 }
@@ -308,13 +309,13 @@ void MenuToFunction_Animation(void)
 {
 	for(uint8_t i=0; i<=MENU_ENTER_FRAMES; i++)
 	{
-		OLED_Clear();				//ÇåÆÁ
-		if(Pre_item >= 1)			//µ±Ç°Ñ¡Ïî¼°ÒÔºóµÄ²Ëµ¥Ñ¡ÏîÊ±
+		OLED_Clear();				//æ¸…å±
+		if(Pre_item >= 1)			//å½“å‰é€‰é¡¹åŠä»¥åçš„èœå•é€‰é¡¹æ—¶
 		{
-			/*±£Ö¤Í¼±ê»¬¶¯µÄÁ¬ĞøĞÔ*/
+			/*ä¿è¯å›¾æ ‡æ»‘åŠ¨çš„è¿ç»­æ€§*/
 			OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//
-			OLED_ShowImage(Pre_x, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//ÏÔÊ¾Ñ¡ÖĞµÄ²Ëµ¥Í¼±ê
-			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚÒ»¸öÍ¼±ê
+			OLED_ShowImage(Pre_x, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//æ˜¾ç¤ºé€‰ä¸­çš„èœå•å›¾æ ‡
+			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//æ˜¾ç¤ºé€‰ä¸­å›¾æ ‡åç¬¬ä¸€ä¸ªå›¾æ ‡
 		}
 
 		OLED_Update();
@@ -322,7 +323,7 @@ void MenuToFunction_Animation(void)
 }
 
 /*
-*	ÉèÖÃ²Ëµ¥Ñ¡Ïî
+*	è®¾ç½®èœå•é€‰é¡¹
 */
 void Set_Selection(uint8_t move_flag, uint8_t pre_item, uint8_t target_item)
 {
@@ -336,12 +337,12 @@ void Set_Selection(uint8_t move_flag, uint8_t pre_item, uint8_t target_item)
 
 
 /*
-*  ²Ëµ¥Ò³ÃæÍ¼±ê°´¼ü¿ØÖÆÂß¼­ÊµÏÖ
+*  èœå•é¡µé¢å›¾æ ‡æŒ‰é”®æ§åˆ¶é€»è¾‘å®ç°
 */
 uint8_t Menu_Page(void)
 {
-	uint8_t Temp_MenuFlag = 0;			//·µ»ØÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ
-	uint8_t Direct_Flag = 2;			//Í¼±êÒÆ¶¯·½Ïò 1£ºÉÏÒ»Ïî 2£ºÏÂÒ»Ïî
+	uint8_t Temp_MenuFlag = 0;			//è¿”å›è®¾ç½®é¡µé¢å…‰æ ‡ä½ç½®
+	uint8_t Direct_Flag = 2;			//å›¾æ ‡ç§»åŠ¨æ–¹å‘ 1ï¼šä¸Šä¸€é¡¹ 2ï¼šä¸‹ä¸€é¡¹
 	move_stateFlag = 1;
 
 	while(1) //Get key's number continuely
@@ -351,23 +352,23 @@ uint8_t Menu_Page(void)
 		if(KeyNum == 1) //Key1: last item
 		{
 			//press key1 to move last one 
-			Direct_Flag = 1;		//ÉÏÒ»Ïî
-			move_stateFlag = 1;		//¿ªÊ¼ÒÆ¶¯
-			MenuFlag--;				//²Ëµ¥ÏîÏòÓÒ¹ö¶¯
+			Direct_Flag = 1;		//ä¸Šä¸€é¡¹
+			move_stateFlag = 1;		//å¼€å§‹ç§»åŠ¨
+			MenuFlag--;				//èœå•é¡¹å‘å³æ»šåŠ¨
 			if(MenuFlag <= 0) 
 			{
-				MenuFlag = MENU_CURSOR_MAX; 		//cursor move to [Ë®Æ½ÒÇ]
+				MenuFlag = MENU_CURSOR_MAX; 		//cursor move to [æ°´å¹³ä»ª]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
 		else if(KeyNum == 2) //Key2: next item
 		{
-			Direct_Flag = 2;		//ÏÂÒ»Ïî
-			move_stateFlag = 1;		//¿ªÊ¼ÒÆ¶¯
-			MenuFlag ++;			//²Ëµ¥ÏîÏò×ó¹ö¶¯
+			Direct_Flag = 2;		//ä¸‹ä¸€é¡¹
+			move_stateFlag = 1;		//å¼€å§‹ç§»åŠ¨
+			MenuFlag ++;			//èœå•é¡¹å‘å·¦æ»šåŠ¨
 			if(MenuFlag >= MENU_CURSOR_MAX + 1)
 			{
-				MenuFlag = MENU_CURSOR_MIN; 		//cursor move to [·µ»Ø]
+				MenuFlag = MENU_CURSOR_MIN; 		//cursor move to [è¿”å›]
 			}
 		}
 		else if(KeyNum == 3) 		//Key3: press to confirmation
@@ -379,50 +380,50 @@ uint8_t Menu_Page(void)
 			Temp_MenuFlag = MenuFlag;
 		}
 
-		/*²Ëµ¥¹â±êÎ»ÖÃÓë¶ÔÓ¦¹¦ÄÜÌø×ª*/
-		if(Temp_MenuFlag == 1)				//¹â±êÎ»ÖÃ1£º¡¾·µ»Ø¡¿
+		/*èœå•å…‰æ ‡ä½ç½®ä¸å¯¹åº”åŠŸèƒ½è·³è½¬*/
+		if(Temp_MenuFlag == 1)				//å…‰æ ‡ä½ç½®1ï¼šã€è¿”å›ã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
 			OLED_Clear();
 			return 0;
 		}
-		else if(Temp_MenuFlag == 2)			//¹â±êÎ»ÖÃ2£º¡¾Ãë±í¡¿
+		else if(Temp_MenuFlag == 2)			//å…‰æ ‡ä½ç½®2ï¼šã€ç§’è¡¨ã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
-			StopClock();					//µ÷ÓÃ[Ãë±í]º¯Êı	
+			StopClock();					//è°ƒç”¨[ç§’è¡¨]å‡½æ•°	
 			OLED_Clear();
 		}
-		else if(Temp_MenuFlag == 3)			//¹â±êÎ»ÖÃ3£º¡¾ÊÖµçÍ²¡¿
+		else if(Temp_MenuFlag == 3)			//å…‰æ ‡ä½ç½®3ï¼šã€æ‰‹ç”µç­’ã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
 			flashlight_Func();
 			OLED_Clear();
 		}
-		else if(Temp_MenuFlag == 4)			//¹â±êÎ»ÖÃ4£º¡¾MPU6050¡¿
+		else if(Temp_MenuFlag == 4)			//å…‰æ ‡ä½ç½®4ï¼šã€MPU6050ã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
 			MPU6050_Main();
 			OLED_Clear();
 		}
-		else if(Temp_MenuFlag == 5)			//¹â±êÎ»ÖÃ5£º¡¾ÓÎÏ·¡¿
+		else if(Temp_MenuFlag == 5)			//å…‰æ ‡ä½ç½®5ï¼šã€æ¸¸æˆã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
-			Game();							//µ÷ÓÃÓÎÏ·£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
+			Game();							//è°ƒç”¨æ¸¸æˆï¼ˆstubï¼Œå¾…dinoè¿ç§»åæ›¿æ¢ï¼‰
 			OLED_Clear();
 		}
-		else if(Temp_MenuFlag == 6)			//¹â±êÎ»ÖÃ6£º¡¾¶¯Ì¬±íÇé¡¿
+		else if(Temp_MenuFlag == 6)			//å…‰æ ‡ä½ç½®6ï¼šã€åŠ¨æ€è¡¨æƒ…ã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
 			Emoji_Func();
 			OLED_Clear();
 		}
-		else if(Temp_MenuFlag == 7)			//¹â±êÎ»ÖÃ7£º¡¾Ë®Æ½ÒÇ¡¿
+		else if(Temp_MenuFlag == 7)			//å…‰æ ‡ä½ç½®7ï¼šã€æ°´å¹³ä»ªã€‘
 		{
 			Temp_MenuFlag = 0;
 			MenuToFunction_Animation();
@@ -437,13 +438,13 @@ uint8_t Menu_Page(void)
 		Menu_Animation();
 
 
-		if(MenuFlag==1)								//²Ëµ¥Î»ÖÃ£º¡¾·µ»Ø¡¿
+		if(MenuFlag==1)								//èœå•ä½ç½®ï¼šã€è¿”å›ã€‘
 		{
-			if(Direct_Flag == 1)					//ÉÏÒ»Ïî
+			if(Direct_Flag == 1)					//ä¸Šä¸€é¡¹
 			{
 				Set_Selection(move_stateFlag,1,0);	
 			}
-			else if(Direct_Flag == 2)				//ÏÂÒ»Ïî
+			else if(Direct_Flag == 2)				//ä¸‹ä¸€é¡¹
 			{
 				Set_Selection(move_stateFlag,0,0);
 			} 
@@ -453,36 +454,36 @@ uint8_t Menu_Page(void)
 			if(Direct_Flag == 1){Set_Selection(move_stateFlag,MenuFlag,MenuFlag-1);}
 			else if(Direct_Flag == 2){Set_Selection(move_stateFlag,MenuFlag-2,MenuFlag-1);}
 		}
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
+		__WFI();	//ç­‰å¾…ä¸­æ–­å”¤é†’ï¼Œé™ä½ç©ºé—²åŠŸè€—
 	}
 }
 
 
-/********************************Ãë±í************************************/
-uint8_t StopClock_Flag = 1;        /* Ãë±íÒ³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-¿ªÊ¼ 3-Í£Ö¹ 4-Çå³ı */
-uint8_t hour,min,sec;              /* Ãë±í¼ÆÊ±Öµ£ºÊ±¡¢·Ö¡¢Ãë */
-uint8_t start_timing_flag = 0;     /* ¼ÆÊ±±êÖ¾£º1-¿ªÊ¼¼ÆÊ± 0-Í£Ö¹¼ÆÊ± */
+/********************************ç§’è¡¨************************************/
+uint8_t StopClock_Flag = 1;        /* ç§’è¡¨é¡µé¢å…‰æ ‡ä½ç½®ï¼š1-è¿”å› 2-å¼€å§‹ 3-åœæ­¢ 4-æ¸…é™¤ */
+uint8_t hour,min,sec;              /* ç§’è¡¨è®¡æ—¶å€¼ï¼šæ—¶ã€åˆ†ã€ç§’ */
+uint8_t start_timing_flag = 0;     /* è®¡æ—¶æ ‡å¿—ï¼š1-å¼€å§‹è®¡æ—¶ 0-åœæ­¢è®¡æ—¶ */
 
 /**
-  * @brief ÏÔÊ¾Ãë±íÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ˜¾ç¤ºç§’è¡¨é¡µé¢UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_StopClock_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
-	OLED_Printf(STOPCLK_TIME_X, STOPCLK_TIME_Y, OLED_8X16, "%02d:%02d:%02d", hour, min, sec);		//Ê±·ÖÃëÏÔÊ¾
-	OLED_ShowString(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, "¿ªÊ¼", OLED_8X16);
-	OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "Í£Ö¹", OLED_8X16);
-	OLED_ShowString(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, "Çå³ı", OLED_8X16);
+	OLED_ShowImage(0,0,16,16,GoBack);			//è¿”å›å›¾æ ‡
+	OLED_Printf(STOPCLK_TIME_X, STOPCLK_TIME_Y, OLED_8X16, "%02d:%02d:%02d", hour, min, sec);		//æ—¶åˆ†ç§’æ˜¾ç¤º
+	OLED_ShowString(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, "å¼€å§‹", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "åœæ­¢", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, "æ¸…é™¤", OLED_8X16);
 }
 
-//ÃëÊı×ÔÔöº¯Êı
+//ç§’æ•°è‡ªå¢å‡½æ•°
 void StopClock_Tick(void)
 {
 	static uint16_t Timer_count;
 	Timer_count++;
-	if(Timer_count >= STOPCLK_1S_TICKS)		//Ã¿¸ô1Ãë½øĞĞÊ±¼äµİÔö
+	if(Timer_count >= STOPCLK_1S_TICKS)		//æ¯éš”1ç§’è¿›è¡Œæ—¶é—´é€’å¢
 	{
 		Timer_count = 0;
 		if(start_timing_flag == 1)
@@ -507,42 +508,42 @@ void StopClock_Tick(void)
 }
 
 /**
-  * @brief Ãë±í¿ªÊ¼¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief ç§’è¡¨å¼€å§‹è®¡æ—¶
+  * @param  æ— 
+  * @retval æ— 
   */
 void ClkCount_Start(void)
 {
-	start_timing_flag = 1;	//¿ªÊ¼¼ÆÊ±
+	start_timing_flag = 1;	//å¼€å§‹è®¡æ—¶
 }
 
 /**
-  * @brief Ãë±íÍ£Ö¹¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief ç§’è¡¨åœæ­¢è®¡æ—¶
+  * @param  æ— 
+  * @retval æ— 
   */
 void ClkCount_Stop(void)
 {
-	start_timing_flag = 0;  //Í£Ö¹¼ÆÊ±
+	start_timing_flag = 0;  //åœæ­¢è®¡æ—¶
 }
 
 /**
-  * @brief Ãë±íÇå³ı¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief ç§’è¡¨æ¸…é™¤è®¡æ—¶
+  * @param  æ— 
+  * @retval æ— 
   */
 void ClkCount_Clear(void)
 {
 	start_timing_flag = 0;
-	hour = min = sec = 0;  //ÇåÁã¼ÆÊ±Öµ
+	hour = min = sec = 0;  //æ¸…é›¶è®¡æ—¶å€¼
 }
 
 /*
-* Ãë±í¹¦ÄÜÊµÏÖº¯Êı
+* ç§’è¡¨åŠŸèƒ½å®ç°å‡½æ•°
 */
 int StopClock(void)
 {
-	uint8_t Temp_StopClock_Flag = 0;		//·µ»ØÃë±íÒ³Ãæ¹â±êÎ»ÖÃ
+	uint8_t Temp_StopClock_Flag = 0;		//è¿”å›ç§’è¡¨é¡µé¢å…‰æ ‡ä½ç½®
 	while(1) //Get key's number continuely
 	{
 
@@ -553,7 +554,7 @@ int StopClock(void)
 			StopClock_Flag--;
 			if(StopClock_Flag <= 0) 
 			{
-				StopClock_Flag = 4; 		//cursor move to second function£º [Çå³ı]
+				StopClock_Flag = 4; 		//cursor move to second functionï¼š [æ¸…é™¤]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -562,7 +563,7 @@ int StopClock(void)
 			StopClock_Flag ++;
 			if(StopClock_Flag > 4)
 			{
-				StopClock_Flag = 1; //cursor move to first item [·µ»Ø]
+				StopClock_Flag = 1; //cursor move to first item [è¿”å›]
 			}
 		}
 		else if(KeyNum == 3) //Key3: press to confirmation
@@ -573,24 +574,24 @@ int StopClock(void)
 		}
 
 
-		if(Temp_StopClock_Flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
+		if(Temp_StopClock_Flag == 1)				//å…‰æ ‡ä½ç½®ï¼šã€è¿”å›ã€‘
 		{
 			OLED_Clear();
 			return 0;
 		}
-		else if(Temp_StopClock_Flag == 2)			//¹â±êÎ»ÖÃ£º¡¾¿ªÊ¼¡¿
+		else if(Temp_StopClock_Flag == 2)			//å…‰æ ‡ä½ç½®ï¼šã€å¼€å§‹ã€‘
 		{
-			ClkCount_Start();						//µ÷ÓÃ[¿ªÊ¼¼ÆÊ±]º¯Êı	
+			ClkCount_Start();						//è°ƒç”¨[å¼€å§‹è®¡æ—¶]å‡½æ•°	
 			OLED_Clear();			
 		}
-		else if(Temp_StopClock_Flag == 3)			//¹â±êÎ»ÖÃ£º¡¾Í£Ö¹¡¿
+		else if(Temp_StopClock_Flag == 3)			//å…‰æ ‡ä½ç½®ï¼šã€åœæ­¢ã€‘
 		{
-			ClkCount_Stop();						//µ÷ÓÃ[Í£Ö¹¼ÆÊ±]º¯Êı	
+			ClkCount_Stop();						//è°ƒç”¨[åœæ­¢è®¡æ—¶]å‡½æ•°	
 			OLED_Clear();			
 		}
-		else if(Temp_StopClock_Flag == 4)			//¹â±êÎ»ÖÃ£º¡¾Çå³ı¡¿
+		else if(Temp_StopClock_Flag == 4)			//å…‰æ ‡ä½ç½®ï¼šã€æ¸…é™¤ã€‘
 		{
-			ClkCount_Clear();						//µ÷ÓÃ[Çå³ı¼ÆÊ±]º¯Êı	
+			ClkCount_Clear();						//è°ƒç”¨[æ¸…é™¤è®¡æ—¶]å‡½æ•°	
 			OLED_Clear();			
 		}
 
@@ -598,22 +599,22 @@ int StopClock(void)
 		/******Background_Color of Function selection******/
 		switch(StopClock_Flag)
 		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
+			case 1: 		//[è¿”å›]å›¾æ ‡å¤„
 				Show_StopClock_UI();
 				OLED_ReverseArea(0,0,16,16);
 				OLED_Update();
 				break;
-			case 2: 		//[¿ªÊ¼]Í¼±ê´¦
+			case 2: 		//[å¼€å§‹]å›¾æ ‡å¤„
 				Show_StopClock_UI();
 				OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;
-			case 3:			//[Í£Ö¹]Í¼±ê´¦
+			case 3:			//[åœæ­¢]å›¾æ ‡å¤„
 				Show_StopClock_UI();
 				OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;	
-			case 4:			//[Çå³ı]Í¼±ê´¦
+			case 4:			//[æ¸…é™¤]å›¾æ ‡å¤„
 				Show_StopClock_UI();
 				OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
@@ -623,25 +624,25 @@ int StopClock(void)
 }
 
 
-/********************************ÊÖµçÍ²************************************/
-uint8_t flashlight_Flag = 1;         /* ÊÖµçÍ²Ò³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-OFF 3-ON */
+/********************************æ‰‹ç”µç­’************************************/
+uint8_t flashlight_Flag = 1;         /* æ‰‹ç”µç­’é¡µé¢å…‰æ ‡ä½ç½®ï¼š1-è¿”å› 2-OFF 3-ON */
 
 /**
-  * @brief ÏÔÊ¾ÊÖµçÍ²Ò³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ˜¾ç¤ºæ‰‹ç”µç­’é¡µé¢UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_flashlight_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);			//è¿”å›å›¾æ ‡
 	OLED_ShowString(20,24,"OFF",OLED_8X16);
 	OLED_ShowString(84,24,"ON",OLED_8X16);
 }
 
 /**
-  * @brief ÊÖµçÍ²´ò¿ª
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ‰‹ç”µç­’æ‰“å¼€
+  * @param  æ— 
+  * @retval æ— 
   */
 void flashlight_ON(void)
 {
@@ -649,9 +650,9 @@ void flashlight_ON(void)
 }
 
 /**
-  * @brief ÊÖµçÍ²¹Ø±Õ
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ‰‹ç”µç­’å…³é—­
+  * @param  æ— 
+  * @retval æ— 
   */
 void flashlight_OFF(void)
 {
@@ -660,7 +661,7 @@ void flashlight_OFF(void)
 
 int flashlight_Func(void)
 {
-	uint8_t Temp_flashlight_Flag = 0;		//·µ»ØÃë±íÒ³Ãæ¹â±êÎ»ÖÃ
+	uint8_t Temp_flashlight_Flag = 0;		//è¿”å›ç§’è¡¨é¡µé¢å…‰æ ‡ä½ç½®
 	while(1) //Get key's number continuely
 	{
 
@@ -671,7 +672,7 @@ int flashlight_Func(void)
 			flashlight_Flag--;
 			if(flashlight_Flag <= 0) 
 			{
-				flashlight_Flag = 3; 		//cursor move to second function£º [ON]
+				flashlight_Flag = 3; 		//cursor move to second functionï¼š [ON]
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -680,7 +681,7 @@ int flashlight_Func(void)
 			flashlight_Flag ++;
 			if(flashlight_Flag > 3)
 			{
-				flashlight_Flag = 1; //cursor move to first item [·µ»Ø]
+				flashlight_Flag = 1; //cursor move to first item [è¿”å›]
 			}
 		}
 		else if(KeyNum == 3) //Key3: press to confirmation
@@ -691,16 +692,16 @@ int flashlight_Func(void)
 		}
 
 
-		if(Temp_flashlight_Flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
+		if(Temp_flashlight_Flag == 1)				//å…‰æ ‡ä½ç½®ï¼šã€è¿”å›ã€‘
 		{
 			flashlight_OFF();
 			return 0;
 		}
-		else if(Temp_flashlight_Flag == 2)			//¹â±êÎ»ÖÃ£º¡¾OFF¡¿
+		else if(Temp_flashlight_Flag == 2)			//å…‰æ ‡ä½ç½®ï¼šã€OFFã€‘
 		{
 			flashlight_OFF();
 		}
-		else if(Temp_flashlight_Flag == 3)			//¹â±êÎ»ÖÃ£º¡¾ON¡¿
+		else if(Temp_flashlight_Flag == 3)			//å…‰æ ‡ä½ç½®ï¼šã€ONã€‘
 		{
 			flashlight_ON();
 		}
@@ -709,17 +710,17 @@ int flashlight_Func(void)
 		/******Background_Color of Function selection******/
 		switch(flashlight_Flag)
 		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
+			case 1: 		//[è¿”å›]å›¾æ ‡å¤„
 				Show_flashlight_UI();
 				OLED_ReverseArea(0,0,16,16);
 				OLED_Update();
 				break;
-			case 2: 		//[OFF]Í¼±ê´¦ 
+			case 2: 		//[OFF]å›¾æ ‡å¤„ 
 				Show_flashlight_UI();
 				OLED_ReverseArea(20,24,24,16);
 				OLED_Update();
 				break;
-			case 3:			//[ON]Í¼±ê´¦
+			case 3:			//[ON]å›¾æ ‡å¤„
 				Show_flashlight_UI();
 				OLED_ReverseArea(84,24,16,16);
 				OLED_Update();
@@ -735,51 +736,51 @@ int flashlight_Func(void)
 
 /********************************MPU6050************************************/
 
-float delta = MPU_SAMPLE_PERIOD_S;      /* ²ÉÑùÖÜÆÚ£¬µ¥Î»Ãë */
-float a = MPU_FILTER_ALPHA;             /* »¥²¹ÂË²¨ÏµÊı£¬·¶Î§0~1£¬Ô½´óÍÓÂİÒÇÈ¨ÖØÔ½¸ß */
-int16_t ax,ay,az;                    /* ¼ÓËÙ¶È¼ÆX¡¢Y¡¢ZÖáÔ­Ê¼Êı¾İ */
-int16_t gx,gy,gz;                   /* ÍÓÂİÒÇX¡¢Y¡¢ZÖáÔ­Ê¼Êı¾İ */
-float roll_a,pitch_a;               /* ¼ÓËÙ¶È¼Æ¼ÆËãµÄºá¹ö½ÇºÍ¸©Ñö½Ç */
-float roll_g,pitch_g,yaw_g;         /* ÍÓÂİÒÇ¼ÆËãµÄºá¹ö½Ç¡¢¸©Ñö½Ç¡¢Æ«º½½Ç */
-float Roll=0.0,Pitch=0.0,Yaw=0.0;    /* ÈÚºÏºóµÄÅ·À­½Ç */
-double Pi = 3.1415927;  /* Ô²ÖÜÂÊ */
+float delta = MPU_SAMPLE_PERIOD_S;      /* é‡‡æ ·å‘¨æœŸï¼Œå•ä½ç§’ */
+float a = MPU_FILTER_ALPHA;             /* äº’è¡¥æ»¤æ³¢ç³»æ•°ï¼ŒèŒƒå›´0~1ï¼Œè¶Šå¤§é™€èºä»ªæƒé‡è¶Šé«˜ */
+int16_t ax,ay,az;                    /* åŠ é€Ÿåº¦è®¡Xã€Yã€Zè½´åŸå§‹æ•°æ® */
+int16_t gx,gy,gz;                   /* é™€èºä»ªXã€Yã€Zè½´åŸå§‹æ•°æ® */
+float roll_a,pitch_a;               /* åŠ é€Ÿåº¦è®¡è®¡ç®—çš„æ¨ªæ»šè§’å’Œä¿¯ä»°è§’ */
+float roll_g,pitch_g,yaw_g;         /* é™€èºä»ªè®¡ç®—çš„æ¨ªæ»šè§’ã€ä¿¯ä»°è§’ã€åèˆªè§’ */
+float Roll=0.0,Pitch=0.0,Yaw=0.0;    /* èåˆåçš„æ¬§æ‹‰è§’ */
+double Pi = 3.1415927;  /* åœ†å‘¨ç‡ */
 
 /**
-  * @brief MPU6050Å·À­½Ç½âËã£¨»¥²¹ÂË²¨Ëã·¨£©
-  * @param  ÎŞ
-  * @retval ÎŞ
-  * @note   ½áºÏ¼ÓËÙ¶È¼ÆºÍÍÓÂİÒÇÊı¾İ£¬Ê¹ÓÃ»¥²¹ÂË²¨Ëã·¨ÈÚºÏµÃµ½ÎÈ¶¨µÄ½Ç¶È
-  *         ÍÓÂİÒÇ¶¯Ì¬ÏìÓ¦ºÃµ«ÓĞÆ¯ÒÆ£¬¼ÓËÙ¶È¼Æ¾²Ì¬¾«¶È¸ßµ«¶¯Ì¬ÏìÓ¦²î
+  * @brief MPU6050æ¬§æ‹‰è§’è§£ç®—ï¼ˆäº’è¡¥æ»¤æ³¢ç®—æ³•ï¼‰
+  * @param  æ— 
+  * @retval æ— 
+  * @note   ç»“åˆåŠ é€Ÿåº¦è®¡å’Œé™€èºä»ªæ•°æ®ï¼Œä½¿ç”¨äº’è¡¥æ»¤æ³¢ç®—æ³•èåˆå¾—åˆ°ç¨³å®šçš„è§’åº¦
+  *         é™€èºä»ªåŠ¨æ€å“åº”å¥½ä½†æœ‰æ¼‚ç§»ï¼ŒåŠ é€Ÿåº¦è®¡é™æ€ç²¾åº¦é«˜ä½†åŠ¨æ€å“åº”å·®
   */
 void MPU6050_Calculation_Euler_angles(void)
 {
-	delay_ms(MPU_SAMPLE_DELAY_MS);								//²ÉÑùÖÜÆÚÎª5ms£¨Ô­Delay_ms¸ÄÎªdelay_ms£©
-	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);		//´«µØÖ··½Ê½£¬·µ»ØÍÓÂİÒÇ¼ÓËÙ¶ÈÖµ
-	/*ÍÓÂİÒÇÅ·À­½Ç¼ÆËã*/
-	roll_g = Roll + (float)gx*delta;				//ºá¹ö½ÇxÖá
-	pitch_g = Pitch + (float)gy*delta;				//¸©Ñö½ÇyÖá
-	yaw_g = Yaw + (float)gz*delta;					//Æ«º½½ÇzÖá
+	delay_ms(MPU_SAMPLE_DELAY_MS);								//é‡‡æ ·å‘¨æœŸä¸º5msï¼ˆåŸDelay_msæ”¹ä¸ºdelay_msï¼‰
+	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);		//ä¼ åœ°å€æ–¹å¼ï¼Œè¿”å›é™€èºä»ªåŠ é€Ÿåº¦å€¼
+	/*é™€èºä»ªæ¬§æ‹‰è§’è®¡ç®—*/
+	roll_g = Roll + (float)gx*delta;				//æ¨ªæ»šè§’xè½´
+	pitch_g = Pitch + (float)gy*delta;				//ä¿¯ä»°è§’yè½´
+	yaw_g = Yaw + (float)gz*delta;					//åèˆªè§’zè½´
 
-	/*¼ÓËÙ¶È¼ÆÅ·À­½Ç¼ÆËã*/
-	roll_a = atan2(ay,az)*180/Pi;					//ºá¹ö½ÇxÖá
-	pitch_a = atan2((-1)*ax,az)*180/Pi;				//¸©Ñö½ÇyÖá
+	/*åŠ é€Ÿåº¦è®¡æ¬§æ‹‰è§’è®¡ç®—*/
+	roll_a = atan2(ay,az)*180/Pi;					//æ¨ªæ»šè§’xè½´
+	pitch_a = atan2((-1)*ax,az)*180/Pi;				//ä¿¯ä»°è§’yè½´
 
-	/*»¥²¹ÂË²¨*/
-	//²ÎÊıaÔ½´ó£»ÍÓÂİÒÇÊı¾İÕ¼±ÈÔ½´ó
-	//²ÎÊıaÔ½Ğ¡£º¼ÓËÙ¶È¼ÆÊı¾İÕ¼±ÈÔ½´ó
+	/*äº’è¡¥æ»¤æ³¢*/
+	//å‚æ•°aè¶Šå¤§ï¼›é™€èºä»ªæ•°æ®å æ¯”è¶Šå¤§
+	//å‚æ•°aè¶Šå°ï¼šåŠ é€Ÿåº¦è®¡æ•°æ®å æ¯”è¶Šå¤§
 	Roll =  a*roll_g + (1-a)*roll_a;
 	Pitch = a*pitch_g +(1-a)*pitch_a;
 	Yaw = a*yaw_g;
 }
 
 /**
-  * @brief ÏÔÊ¾MPU6050Êı¾İÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ˜¾ç¤ºMPU6050æ•°æ®é¡µé¢UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_MPU6050_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);			//è¿”å›å›¾æ ‡
 	OLED_Printf(0,16,OLED_8X16,"Roll:  %.2f",Roll);
 	OLED_Printf(0,32,OLED_8X16,"Pitch: %.2f",Pitch);
 	OLED_Printf(0,48,OLED_8X16,"Yaw:   %.2f",Yaw);
@@ -791,17 +792,17 @@ int MPU6050_Main(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
+		if(KeyNum == 3)			//ç¡®è®¤é”®æŒ‰ä¸‹
 		{
-			OLED_Clear();		//ÇåÆÁ
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
+			OLED_Clear();		//æ¸…å±
+			OLED_Update();		//åˆ·æ–°å±å¹•
 			return 0;
 		}
 
 		OLED_Clear();
 		MPU6050_Calculation_Euler_angles();
 		Show_MPU6050_UI();
-		OLED_ReverseArea(0,0,16,16);	//·´ÏàÏÔÊ¾·µ»ØÍ¼±ê
+		OLED_ReverseArea(0,0,16,16);	//åç›¸æ˜¾ç¤ºè¿”å›å›¾æ ‡
 		OLED_Update();
 	}
 
@@ -810,17 +811,17 @@ int MPU6050_Main(void)
 /*********************************Dino_Game********************************************/
 
 /**
-  * @brief ÏÔÊ¾ÓÎÏ·Ñ¡ÔñÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
+  * @brief æ˜¾ç¤ºæ¸¸æˆé€‰æ‹©é¡µé¢UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_Game_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);			//è¿”å›å›¾æ ‡
 	OLED_ShowString(0,16,"Google DinoGame",OLED_8X16);
 }
 
-uint8_t game_flag = 1;              /* ÓÎÏ·Ñ¡ÔñÒ³Ãæ¹â±ê£º1-·µ»Ø 2-½øÈëÓÎÏ· */
+uint8_t game_flag = 1;              /* æ¸¸æˆé€‰æ‹©é¡µé¢å…‰æ ‡ï¼š1-è¿”å› 2-è¿›å…¥æ¸¸æˆ */
 
 int Game(void)
 {
@@ -835,7 +836,7 @@ int Game(void)
 			game_flag--;
 			if(game_flag <= 0) 
 			{
-				game_flag = 2; 		//ÓÎÏ·±êÌâ
+				game_flag = 2; 		//æ¸¸æˆæ ‡é¢˜
 			}
 		}
 		//when press key2 move to next item, cursor move to first item
@@ -844,7 +845,7 @@ int Game(void)
 			game_flag ++;
 			if(game_flag >= 3)
 			{
-				game_flag = 1; //cursor move to first item [·µ»Ø]
+				game_flag = 1; //cursor move to first item [è¿”å›]
 			}
 		}
 		else if(KeyNum == 3) //Key3: press to confirmation
@@ -855,14 +856,14 @@ int Game(void)
 		}
 
 
-		if(Temp_game_flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
+		if(Temp_game_flag == 1)				//å…‰æ ‡ä½ç½®ï¼šã€è¿”å›ã€‘
 		{
 			return 0;
 		}
-		else if(Temp_game_flag == 2)			//¹â±êÎ»ÖÃ£º¡¾½øÈëÓÎÏ·¡¿
+		else if(Temp_game_flag == 2)			//å…‰æ ‡ä½ç½®ï¼šã€è¿›å…¥æ¸¸æˆã€‘
 		{
-			Game_Init();						//µ÷ÓÃÓÎÏ·³õÊ¼»¯£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
-			Dino_game_Animation();				//µ÷ÓÃÓÎÏ·¶¯»­£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
+			Game_Init();						//è°ƒç”¨æ¸¸æˆåˆå§‹åŒ–ï¼ˆstubï¼Œå¾…dinoè¿ç§»åæ›¿æ¢ï¼‰
+			Dino_game_Animation();				//è°ƒç”¨æ¸¸æˆåŠ¨ç”»ï¼ˆstubï¼Œå¾…dinoè¿ç§»åæ›¿æ¢ï¼‰
 			Temp_game_flag = 0;
 		}
 		else
@@ -874,12 +875,12 @@ int Game(void)
 		/******Background_Color of Function selection******/
 		switch(game_flag)
 		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
+			case 1: 		//[è¿”å›]å›¾æ ‡å¤„
 				Show_Game_UI();
 				OLED_ReverseArea(0,0,16,16);
 				OLED_Update();
 				break;
-			case 2: 		//[]Í¼±ê´¦ 
+			case 2: 		//[]å›¾æ ‡å¤„ 
 				Show_Game_UI();
 				OLED_ReverseArea(0,16,120,16);
 				OLED_Update();
@@ -894,53 +895,53 @@ int Game(void)
 
 
 
-/*********************************¶¯Ì¬±íÇé°ü********************************************/
+/*********************************åŠ¨æ€è¡¨æƒ…åŒ…********************************************/
 
 /**
-  * @brief ÏÔÊ¾¶¯Ì¬±íÇé¶¯»­£¨ÕöÑÛ/±ÕÑÛÑ­»·£©
-  * @param  ÎŞ
-  * @retval ÎŞ
-  * @note   Ñ­»·ÏÔÊ¾Õ£ÑÛ¶¯»­£º±ÕÑÛ->ÕöÑÛ->ÑÓÊ±->ÖØ¸´
+  * @brief æ˜¾ç¤ºåŠ¨æ€è¡¨æƒ…åŠ¨ç”»ï¼ˆççœ¼/é—­çœ¼å¾ªç¯ï¼‰
+  * @param  æ— 
+  * @retval æ— 
+  * @note   å¾ªç¯æ˜¾ç¤ºçœ¨çœ¼åŠ¨ç”»ï¼šé—­çœ¼->ççœ¼->å»¶æ—¶->é‡å¤
   */
 void Show_emoji_UI(void)
 {
-	//±ÕÑÛ
+	//é—­çœ¼
 	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
 	{
 		OLED_Clear();
-		//×óÃ¼Ã«
+		//å·¦çœ‰æ¯›
 		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[0]);
-		//ÓÒÃ¼Ã«
+		//å³çœ‰æ¯›
 		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[1]);
-		//×óÑÛ
+		//å·¦çœ¼
 		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
-		//ÓÒÑÛ
+		//å³çœ¼
 		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
-		//×ì°Í
+		//å˜´å·´
 		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
 		OLED_Update();
-		delay_ms(EMOJI_BLINK_DELAY_MS);		//Ô­Delay_ms¸ÄÎªdelay_ms
+		delay_ms(EMOJI_BLINK_DELAY_MS);		//åŸDelay_msæ”¹ä¸ºdelay_ms
 	}
 
-	//ÕöÑÛ
+	//ççœ¼
 	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
 	{
 		OLED_Clear();
-		//×óÃ¼Ã«
+		//å·¦çœ‰æ¯›
 		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[0]);
-		//ÓÒÃ¼Ã«
+		//å³çœ‰æ¯›
 		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[1]);
-		//×óÑÛ
+		//å·¦çœ¼
 		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
-		//ÓÒÑÛ
+		//å³çœ¼
 		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
-		//×ì°Í
+		//å˜´å·´
 		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
 		OLED_Update();
-		delay_ms(EMOJI_BLINK_DELAY_MS);		//Ô­Delay_ms¸ÄÎªdelay_ms
+		delay_ms(EMOJI_BLINK_DELAY_MS);		//åŸDelay_msæ”¹ä¸ºdelay_ms
 	}
 
-	delay_ms(EMOJI_BLINK_GAP_MS);				//Ô­Delay_ms¸ÄÎªdelay_ms
+	delay_ms(EMOJI_BLINK_GAP_MS);				//åŸDelay_msæ”¹ä¸ºdelay_ms
 }
 
 int Emoji_Func(void)
@@ -949,10 +950,10 @@ int Emoji_Func(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
+		if(KeyNum == 3)			//ç¡®è®¤é”®æŒ‰ä¸‹
 		{
-			OLED_Clear();		//ÇåÆÁ			
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
+			OLED_Clear();		//æ¸…å±			
+			OLED_Update();		//åˆ·æ–°å±å¹•
 			return 0;
 		}
 		Show_emoji_UI();
@@ -961,27 +962,27 @@ int Emoji_Func(void)
 }
 
 
-/*********************************Ë®Æ½ÒÇ********************************************/
+/*********************************æ°´å¹³ä»ª********************************************/
 /*
-* @brief: ÏÔÊ¾Ë®Æ½ÒÇUI
+* @brief: æ˜¾ç¤ºæ°´å¹³ä»ªUI
 */
 void Show_Gradienter_UI(void)
 {
 	int16_t x = GRADIENTER_CENTER_X - Roll;
 	int16_t y = GRADIENTER_CENTER_Y + Pitch;
-	MPU6050_Calculation_Euler_angles();					//¼ÆËãÅ·À­½Ç
-	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);			//»æÖÆË®Æ½ÒÇÍâÎ§Ô²
-	int16_t dx = x - GRADIENTER_CENTER_X;				//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²Ïà¶Ô´óÔ²ĞÄµÄx×ø±ê
-	int16_t dy = y - GRADIENTER_CENTER_Y;				//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²Ïà¶Ô´óÔ²ĞÄµÄy×ø±ê	
-	float distance = sqrtf(dx*dx + dy*dy);				//¼ÆËãÊµĞÄÔ²¾àÀë´óÔ²ĞÄµÄ¾àÀë
+	MPU6050_Calculation_Euler_angles();					//è®¡ç®—æ¬§æ‹‰è§’
+	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);			//ç»˜åˆ¶æ°´å¹³ä»ªå¤–å›´åœ†
+	int16_t dx = x - GRADIENTER_CENTER_X;				//è®¡ç®—æ°´å¹³ä»ªå†…å®å¿ƒåœ†ç›¸å¯¹å¤§åœ†å¿ƒçš„xåæ ‡
+	int16_t dy = y - GRADIENTER_CENTER_Y;				//è®¡ç®—æ°´å¹³ä»ªå†…å®å¿ƒåœ†ç›¸å¯¹å¤§åœ†å¿ƒçš„yåæ ‡	
+	float distance = sqrtf(dx*dx + dy*dy);				//è®¡ç®—å®å¿ƒåœ†è·ç¦»å¤§åœ†å¿ƒçš„è·ç¦»
 	if(distance > GRADIENTER_BOUNDARY_R)
 	{
-		float scale = GRADIENTER_BOUNDARY_R / distance;	//¼ÆËãËõ·Å±ÈÀı
-		x = GRADIENTER_CENTER_X + (dx * scale);			//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²µÄx×ø±ê
-		y = GRADIENTER_CENTER_Y + (dy * scale);			//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²µÄy×ø±ê
+		float scale = GRADIENTER_BOUNDARY_R / distance;	//è®¡ç®—ç¼©æ”¾æ¯”ä¾‹
+		x = GRADIENTER_CENTER_X + (dx * scale);			//è®¡ç®—æ°´å¹³ä»ªå†…å®å¿ƒåœ†çš„xåæ ‡
+		y = GRADIENTER_CENTER_Y + (dy * scale);			//è®¡ç®—æ°´å¹³ä»ªå†…å®å¿ƒåœ†çš„yåæ ‡
 	}
-	OLED_DrawCircle(x, y, GRADIENTER_INNER_R, OLED_FILLED);	//»æÖÆË®Æ½ÒÇÄÚÊµĞÄÔ²
-	OLED_Update();			//Ë¢ĞÂÆÁÄ»
+	OLED_DrawCircle(x, y, GRADIENTER_INNER_R, OLED_FILLED);	//ç»˜åˆ¶æ°´å¹³ä»ªå†…å®å¿ƒåœ†
+	OLED_Update();			//åˆ·æ–°å±å¹•
 }
 
 uint8_t Gradienter_Func(void)
@@ -990,14 +991,14 @@ uint8_t Gradienter_Func(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
+		if(KeyNum == 3)			//ç¡®è®¤é”®æŒ‰ä¸‹
 		{
-			OLED_Clear();		//ÇåÆÁ			
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
+			OLED_Clear();		//æ¸…å±			
+			OLED_Update();		//åˆ·æ–°å±å¹•
 			return 0;
 		}	
 		OLED_Clear();
-		Show_Gradienter_UI();	// ÄÚ²¿ÒÑµ÷ÓÃ OLED_Update()
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
+		Show_Gradienter_UI();	// å†…éƒ¨å·²è°ƒç”¨ OLED_Update()
+		__WFI();	//ç­‰å¾…ä¸­æ–­å”¤é†’ï¼Œé™ä½ç©ºé—²åŠŸè€—
 	}
 }
