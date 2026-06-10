@@ -1,13 +1,13 @@
 /**
   * @file           : dino.c
-  * @brief          : å°æé¾™è·‘é…·æ¸¸æˆæ¨¡å—ï¼ˆHALåº“ç‰ˆæœ¬ï¼‰
+  * @brief          : Ğ¡¿ÖÁúÅÜ¿áÓÎÏ·Ä£¿é£¨HAL¿â°æ±¾£©
   * @author         : CHSGY
   * @date           : 2026-06-07
   *
-  * @note           : ä»æ ‡å‡†åº“dino.cç§»æ¤ï¼Œä¸»è¦ä¿®æ”¹ç‚¹ï¼š
-  *                   1. å¤´æ–‡ä»¶ï¼šstm32f10x.h -> main.h, Delay.h -> delay.h
-  *                   2. OLED/KeyåŒ…å«è·¯å¾„å¢åŠ  Hardware/ å‰ç¼€
-  *                   3. å»¶æ—¶å‡½æ•°ï¼šDelay_s() -> delay_ms()
+  * @note           : ´Ó±ê×¼¿âdino.cÒÆÖ²£¬Ö÷ÒªĞŞ¸Äµã£º
+  *                   1. Í·ÎÄ¼ş£ºstm32f10x.h -> main.h, Delay.h -> delay.h
+  *                   2. OLED/Key°üº¬Â·¾¶Ôö¼Ó Hardware/ Ç°×º
+  *                   3. ÑÓÊ±º¯Êı£ºDelay_s() -> delay_ms()
   */
 
 #include "main.h"
@@ -21,24 +21,24 @@
 
 extern double Pi;
 
-int Dino_Score;                         /* æ¸¸æˆå¾—åˆ† */
-uint8_t Dino_ScoreCount;                /* åˆ†æ•°é€’å¢è®¡æ•° */
+int Dino_Score;                         /* ÓÎÏ·µÃ·Ö */
+uint8_t Dino_ScoreCount;                /* ·ÖÊıµİÔö¼ÆÊı */
 
-uint16_t Dino_GroundCount;              /* åœ°é¢ç§»åŠ¨è®¡æ•° */
-uint16_t Dino_GroundPos;                /* åœ°é¢åƒç´ ä½ç½®è®¡æ•°ï¼ŒèŒƒå›´ï¼š0~255ï¼ˆå…±256ä¸ªåƒç´ ç‚¹ï¼‰ */
+uint16_t Dino_GroundCount;              /* µØÃæÒÆ¶¯¼ÆÊı */
+uint16_t Dino_GroundPos;                /* µØÃæÏñËØÎ»ÖÃ¼ÆÊı£¬·¶Î§£º0~255£¨¹²256¸öÏñËØµã£© */
 
-uint16_t Dino_BarrierPos;               /* éšœç¢ç‰©å±å¹•ä½ç½®ï¼ŒèŒƒå›´ï¼š0~143 */
-uint8_t Dino_BarrierFlag;               /* éšœç¢ç‰©ç±»å‹ç´¢å¼•ï¼š0~2 */
+uint16_t Dino_BarrierPos;               /* ÕÏ°­ÎïÆÁÄ»Î»ÖÃ£¬·¶Î§£º0~143 */
+uint8_t Dino_BarrierFlag;               /* ÕÏ°­ÎïÀàĞÍË÷Òı£º0~2 */
 
-uint16_t Dino_CloudPos;                 /* äº‘æœµå±å¹•ä½ç½®ï¼ŒèŒƒå›´ï¼š0~200 */
-uint8_t Dino_CloudCount;                /* äº‘æœµç§»åŠ¨è®¡æ•° */
+uint16_t Dino_CloudPos;                 /* ÔÆ¶äÆÁÄ»Î»ÖÃ£¬·¶Î§£º0~200 */
+uint8_t Dino_CloudCount;                /* ÔÆ¶äÒÆ¶¯¼ÆÊı */
 
-uint8_t Dino_JumpFlag;                  /* è·³è·ƒæ ‡å¿—ï¼š1-è·³è·ƒä¸­ 0-åœ°é¢ */
-uint8_t Dino_JumpPos;                   /* å½“å‰è·³è·ƒé«˜åº¦ */
-uint16_t Dino_JumpCount = 1;            /* è·³è·ƒè®¡æ—¶è®¡æ•° */
+uint8_t Dino_JumpFlag;                  /* ÌøÔ¾±êÖ¾£º1-ÌøÔ¾ÖĞ 0-µØÃæ */
+uint8_t Dino_JumpPos;                   /* µ±Ç°ÌøÔ¾¸ß¶È */
+uint16_t Dino_JumpCount = 1;            /* ÌøÔ¾¼ÆÊ±¼ÆÊı */
 
 /**
-  * @brief æ¸¸æˆå¯¹è±¡è¾¹ç•Œç»“æ„ä½“
+  * @brief ÓÎÏ·¶ÔÏó±ß½ç½á¹¹Ìå
   */
 struct Object_Position{
     uint8_t minX,maxX,minY,maxY;
@@ -46,10 +46,10 @@ struct Object_Position{
 
 
 /**
-  * @brief æ¸¸æˆåˆå§‹åŒ–
-  * @param  æ— 
-  * @retval æ— 
-  * @note   é‡ç½®æ‰€æœ‰æ¸¸æˆå˜é‡åˆ°åˆå§‹çŠ¶æ€
+  * @brief ÓÎÏ·³õÊ¼»¯
+  * @param  ÎŞ
+  * @retval ÎŞ
+  * @note   ÖØÖÃËùÓĞÓÎÏ·±äÁ¿µ½³õÊ¼×´Ì¬
   */
 void Game_Init(void)
 {
@@ -57,9 +57,9 @@ void Game_Init(void)
 }
 
 /**
-  * @brief æ˜¾ç¤ºæ¸¸æˆåˆ†æ•°
-  * @param  æ— 
-  * @retval æ— 
+  * @brief ÏÔÊ¾ÓÎÏ··ÖÊı
+  * @param  ÎŞ
+  * @retval ÎŞ
   */
 void Show_Score(void)
 {
@@ -67,31 +67,31 @@ void Show_Score(void)
 }
 
 /*
-* æ¸¸æˆåœ°é¢æ˜¾ç¤º
-* å°†256åƒç´ é•¿åº¦çš„åœ°é¢åˆ†ä¸º2ç»„è¿›è¡Œæ˜¾ç¤ºï¼Œæ¯ç»„128ä¸ªåƒç´ é•¿åº¦
+* ÓÎÏ·µØÃæÏÔÊ¾
+* ½«256ÏñËØ³¤¶ÈµÄµØÃæ·ÖÎª2×é½øĞĞÏÔÊ¾£¬Ã¿×é128¸öÏñËØ³¤¶È
 */
 void Show_Ground(void)
 {
     if(Dino_GroundPos < DINO_SCREEN_WIDTH)
     {
-        //åœ°é¢1
+        //µØÃæ1
         for(uint8_t i=0; i<DINO_SCREEN_WIDTH; i++)
         {
-            //ä»ç¬¬Dino_GroundPosæ ¼å¼€å§‹çš„128æ ¼å¤åˆ¶åˆ°æ˜¾å­˜æ•°ç»„ä¸­
-            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[Dino_GroundPos+i]; //Dino_GroundPosåœ¨å¾ªç¯ä¸­ä¸å˜ï¼Œå¾ªç¯ç»“æŸåç´¯åŠ 
+            //´ÓµÚDino_GroundPos¸ñ¿ªÊ¼µÄ128¸ñ¸´ÖÆµ½ÏÔ´æÊı×éÖĞ
+            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[Dino_GroundPos+i]; //Dino_GroundPosÔÚÑ­»·ÖĞ²»±ä£¬Ñ­»·½áÊøºóÀÛ¼Ó
         }
     }
     else   
     {
-        //åœ°é¢2
-        for(uint8_t i=0; i<GROUND_TEXTURE_LEN-1-Dino_GroundPos; i++)   //å…ˆç®—256åƒç´ çš„åœ°é¢è¿˜å‰©å¤šå°‘æ ¼
+        //µØÃæ2
+        for(uint8_t i=0; i<GROUND_TEXTURE_LEN-1-Dino_GroundPos; i++)   //ÏÈËã256ÏñËØµÄµØÃæ»¹Ê£¶àÉÙ¸ñ
         {
             OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[i+Dino_GroundPos];
         }
-        //åœ°é¢1
-        for(uint8_t i=GROUND_TEXTURE_LEN-1-Dino_GroundPos; i<DINO_SCREEN_WIDTH; i++)   //å±å¹•å‰©ä¸‹çš„ä½ç½®ç”¨"åœ°é¢"å¼€å¤´è¡¥é½
+        //µØÃæ1
+        for(uint8_t i=GROUND_TEXTURE_LEN-1-Dino_GroundPos; i<DINO_SCREEN_WIDTH; i++)   //ÆÁÄ»Ê£ÏÂµÄÎ»ÖÃÓÃ"µØÃæ"¿ªÍ·²¹Æë
         {
-            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[i-(GROUND_TEXTURE_LEN-1-Dino_GroundPos)]; //æŠŠä¸‹æ ‡"æŠ˜å›"åˆ°åœ°é¢å¼€å¤´ 
+            OLED_DisplayBuf[DINO_GROUND_PAGE][i] = Ground[i-(GROUND_TEXTURE_LEN-1-Dino_GroundPos)]; //°ÑÏÂ±ê"ÕÛ»Ø"µ½µØÃæ¿ªÍ· 
         }
     }
 
@@ -101,21 +101,21 @@ void Show_Ground(void)
 struct Object_Position Barr;
 
 /**
-  * @brief æ˜¾ç¤ºéšœç¢ç‰©
-  * @param  æ— 
-  * @retval æ— 
-  * @note   å½“éšœç¢ç‰©ç§»å‡ºå±å¹•å·¦ä¾§åï¼Œéšæœºç”Ÿæˆæ–°éšœç¢ç‰©
+  * @brief ÏÔÊ¾ÕÏ°­Îï
+  * @param  ÎŞ
+  * @retval ÎŞ
+  * @note   µ±ÕÏ°­ÎïÒÆ³öÆÁÄ»×ó²àºó£¬Ëæ»úÉú³ÉĞÂÕÏ°­Îï
   */
 void Show_Barrier(void)
 {
     if(Dino_BarrierPos >= BARRIER_MAX_POS - 1)
     {
-        Dino_BarrierFlag = rand() % BARRIER_TYPE_COUNT; //ç”Ÿæˆ0~2çš„éšæœºæ•°
+        Dino_BarrierFlag = rand() % BARRIER_TYPE_COUNT; //Éú³É0~2µÄËæ»úÊı
     }
-    //ä»¥å±å¹•å³ä¸‹è§’ä¸ºåæ ‡åŸç‚¹å‘å·¦ä¸ºæ­£æ–¹å‘è®¡ç®—Xåæ ‡
+    //ÒÔÆÁÄ»ÓÒÏÂ½ÇÎª×ø±êÔ­µãÏò×óÎªÕı·½Ïò¼ÆËãX×ø±ê
     OLED_ShowImage(DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos, DINO_GROUND_Y, BARRIER_WIDTH, BARRIER_HEIGHT, Barrier[Dino_BarrierFlag]);
 
-    /*éšœç¢ç‰©è¾¹ç•Œå€¼*/
+    /*ÕÏ°­Îï±ß½çÖµ*/
     Barr.minX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos;
     Barr.maxX = DINO_SCREEN_WIDTH - 1 - Dino_BarrierPos + BARRIER_WIDTH;
     Barr.minY = DINO_GROUND_Y;
@@ -123,9 +123,9 @@ void Show_Barrier(void)
 }
 
 /**
-  * @brief æ˜¾ç¤ºäº‘æœµ
-  * @param  æ— 
-  * @retval æ— 
+  * @brief ÏÔÊ¾ÔÆ¶ä
+  * @param  ÎŞ
+  * @retval ÎŞ
   */
 void Show_Cloud(void)
 {
@@ -136,10 +136,10 @@ void Show_Cloud(void)
 struct Object_Position dino;
 
 /**
-  * @brief æ˜¾ç¤ºå°æé¾™
-  * @param  æ— 
-  * @retval æ— 
-  * @note   æ£€æµ‹æŒ‰é”®1è§¦å‘è·³è·ƒï¼Œä½¿ç”¨æ­£å¼¦å‡½æ•°å®ç°å¹³æ»‘è·³è·ƒåŠ¨ç”»
+  * @brief ÏÔÊ¾Ğ¡¿ÖÁú
+  * @param  ÎŞ
+  * @retval ÎŞ
+  * @note   ¼ì²â°´¼ü1´¥·¢ÌøÔ¾£¬Ê¹ÓÃÕıÏÒº¯ÊıÊµÏÖÆ½»¬ÌøÔ¾¶¯»­
   */
 void Show_Dino(void)
 {
@@ -168,7 +168,7 @@ void Show_Dino(void)
         OLED_ShowImage(DINO_X_POS, DINO_GROUND_Y - Dino_JumpPos, DINO_WIDTH, DINO_HEIGHT, Dino[2]);
     }
 
-    /*å°æé¾™è¾¹ç•Œå€¼*/
+    /*Ğ¡¿ÖÁú±ß½çÖµ*/
     dino.minX = DINO_X_POS;
     dino.maxX = DINO_WIDTH;
     dino.minY = DINO_GROUND_Y - Dino_JumpPos;
@@ -176,10 +176,10 @@ void Show_Dino(void)
 }
 
 /**
-  * @brief ç¢°æ’æ£€æµ‹å‡½æ•°
-  * @param  a  å¯¹è±¡Aè¾¹ç•Œï¼ˆéšœç¢ç‰©ï¼‰
-  * @param  b  å¯¹è±¡Bè¾¹ç•Œï¼ˆå°æé¾™ï¼‰
-  * @retval 0-æœªç¢°æ’ 1-ç¢°æ’
+  * @brief Åö×²¼ì²âº¯Êı
+  * @param  a  ¶ÔÏóA±ß½ç£¨ÕÏ°­Îï£©
+  * @param  b  ¶ÔÏóB±ß½ç£¨Ğ¡¿ÖÁú£©
+  * @retval 0-Î´Åö×² 1-Åö×²
   */
 uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
 {
@@ -199,10 +199,10 @@ uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
 }
 
 /**
-  * @brief æ¸¸æˆè®¡æ—¶æ»´ç­”å‡½æ•°ï¼ˆä¸­æ–­è°ƒç”¨ï¼‰
-  * @param  æ— 
-  * @retval æ— 
-  * @note   æ­¤å‡½æ•°åœ¨1mså®šæ—¶å™¨ä¸­æ–­ä¸­è°ƒç”¨ï¼Œæ›´æ–°æ¸¸æˆä¸­çš„å„ç§è®¡æ—¶å™¨å’Œä½ç½®
+  * @brief ÓÎÏ·¼ÆÊ±µÎ´ğº¯Êı£¨ÖĞ¶Ïµ÷ÓÃ£©
+  * @param  ÎŞ
+  * @retval ÎŞ
+  * @note   ´Ëº¯ÊıÔÚ1ms¶¨Ê±Æ÷ÖĞ¶ÏÖĞµ÷ÓÃ£¬¸üĞÂÓÎÏ·ÖĞµÄ¸÷ÖÖ¼ÆÊ±Æ÷ºÍÎ»ÖÃ
   */
 void dino_tick(void)
 {
@@ -210,7 +210,7 @@ void dino_tick(void)
     Dino_GroundCount++;
     Dino_CloudCount++;
 
-    if(Dino_ScoreCount >= SCORE_TICK_PERIOD)  //0.1ç§’å˜åŒ–ä¸€æ¬¡åˆ†æ•°å€¼
+    if(Dino_ScoreCount >= SCORE_TICK_PERIOD)  //0.1Ãë±ä»¯Ò»´Î·ÖÊıÖµ
     {
         Dino_ScoreCount=0;
         Dino_Score++;
@@ -255,10 +255,10 @@ void dino_tick(void)
 
 
 /**
-  * @brief æ¸¸æˆä¸»å¾ªç¯åŠ¨ç”»
-  * @param  æ— 
-  * @retval 0-æ¸¸æˆç»“æŸè¿”å›
-  * @note   å¾ªç¯æ›´æ–°æ¸¸æˆç”»é¢ï¼Œæ£€æµ‹ç¢°æ’
+  * @brief ÓÎÏ·Ö÷Ñ­»·¶¯»­
+  * @param  ÎŞ
+  * @retval 0-ÓÎÏ·½áÊø·µ»Ø
+  * @note   Ñ­»·¸üĞÂÓÎÏ·»­Ãæ£¬¼ì²âÅö×²
   */
 uint8_t Dino_game_Animation(void)
 {
@@ -276,7 +276,7 @@ uint8_t Dino_game_Animation(void)
 
         return_flag = isColliding(&Barr,&dino);
         
-        /*æ¸¸æˆç»“æŸé€€å›åˆ°ä¸Šä¸€çº§*/
+        /*ÓÎÏ·½áÊøÍË»Øµ½ÉÏÒ»¼¶*/
         if(return_flag  == 1)
         {
             return 0;

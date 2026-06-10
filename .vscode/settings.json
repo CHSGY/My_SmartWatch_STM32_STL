@@ -1,0 +1,7 @@
+{
+    "files.autoGuessEncoding": true,
+    "files.encoding": "gbk",
+    "[markdown]": {
+        "files.encoding": "utf8"
+    }
+}

@@ -528,8 +528,235 @@ linking...
 | 文件 | 编码 | 中文字符串 | 状态 |
 |------|------|-----------|------|
 | `OLED_Data.c` | GBK | 是（中文字符数组） | ✅ 已修复（问题一） |
-| `menu.c` | GBK | 是（UI 文本） | ✅ 已修复（问题四） |
-| `OLED.c` | UTF-8 | 否（仅注释含中文） | ✅ 无需处理 |
-| 其他 `.c` 文件 | UTF-8 | 否 | ✅ 无需处理 |
+| `menu.c` | GBK | 是（UI 文本） | ✅ 已修复（问题四→问题五补充） |
+| `SetTime.c` | GBK | 是（UI 文本） | ✅ 已修复（问题五） |
+| `OLED.c` | GBK | 仅注释含中文（无字符串） | ✅ 已统一（问题五编码统一） |
+| `OLED_Data.h` | GBK | 仅注释含中文 | ✅ 已统一（问题五编码统一） |
+| `dino.c` | GBK | 仅注释含中文 | ✅ 已统一（问题五编码统一） |
+| 其他 `.c/.h` 文件 | UTF-8 | 否 | ✅ 无需处理 |
 
 > **注意：** 注释中的中文不影响编译，因为编译器在词法分析前会剥离注释。只有字符串字面量（双引号内的内容）需要正确的编码。
+>
+> **2026-06-10 编码统一：** 问题五修复完成后，将工程中所有含中文的源文件统一为 GBK 编码，并配置 `.vscode/settings.json` 的 `files.autoGuessEncoding: true` + `files.encoding: gbk`，确保 Keil IDE 和 VSCode 均能正确显示中文注释。Markdown 文档保持 UTF-8 编码（通过 `[markdown].files.encoding: utf8` 覆盖）。
+
+---
+
+## 问题五：汉字显示异常 — 字符集宏定义与文件编码双重不匹配
+
+### 现象
+
+首页时钟界面"菜单"和"设置"汉字显示异常（显示为默认的方框问号图形），设置项目中所有汉字均显示不正常。
+
+### 报错信息
+
+编译阶段无报错（0 Error, 0 Warning），问题出现在运行时。屏幕上所有汉字均被替换为字库末尾的默认图形（方框内问号）。
+
+### 原因分析
+
+**根本原因有两层：`OLED_Data.h` 字符集宏定义错误 + `menu.c`/`SetTime.c` 文件编码未转换。**
+
+#### 第一轮排查：宏定义不匹配
+
+| 事项 | 问题一修复后的状态 | 应有状态 |
+|------|-------------------|---------|
+| `OLED_Data.c` 文件编码 | GB2312（GBK） ✅ | — |
+| `OLED_Data.h` 宏定义 | `OLED_CHARSET_UTF8` ❌ | `OLED_CHARSET_GB2312` |
+| `menu.c` 文件编码 | **仍为 UTF-8** ❌ | GBK |
+
+修改宏定义（`OLED_CHARSET_UTF8` → `OLED_CHARSET_GB2312`）后问题仍然存在，深入排查发现 **问题四记录的 `menu.c` 编码转换并未真正执行**，且 `SetTime.c` 同样未转换。
+
+#### 第二轮排查：源文件编码仍为 UTF-8
+
+实际文件编码状态：
+
+| 文件 | 记录状态（问题四文档） | 实际状态 | 包含中文字符串 |
+|------|----------------------|---------|-------------|
+| `menu.c` | GBK ✅ | **UTF-8 (with BOM)** ❌ | 是："菜单"、"设置"、"开始"、"停止"、"清除"、"日期时间设置" |
+| `SetTime.c` | 未提及 | **UTF-8** ❌ | 是："年"、"月"、"日"、"时"、"分"、"秒" |
+| `OLED_Data.c` | GBK | ISO-8859 (GBK raw bytes) ✅ | 是（字库索引） |
+| `OLED.c` | UTF-8 | UTF-8 ✅ | 否（仅注释含中文） |
+
+#### 匹配失败机制
+
+以 `menu.c` 中 `"菜单"` 为例，完整的数据流：
+
+```
+menu.c 源文件（UTF-8）:  "菜单" = E8 8F 9C E5 8D 95  (6 bytes)
+        │
+        ▼ ARMCC 5 + --no-multibyte-chars
+        │ 编译器按单字节序列原样存储，不做多字节转换
+        ▼
+运行时内存中的字符串:    E8 8F 9C E5 8D 95  (UTF-8 原样)
+        │
+        ▼ OLED_ShowString() GB2312 模式
+        │ bit7=1 → 取2字节: E8 8F, 9C E5, 8D 95
+        │ SingleChar = {E8, 8F, 00}, {9C, E5, 00}, {8D, 95, 00}
+        │
+        ▼ strcmp 匹配字库
+字库索引（GB2312）:      B2 CB (菜), B5 A5 (单)
+解析结果（UTF-8乱码）:   E8 8F, 9C E5, 8D 95
+                         ↑ strcmp ≠ 0，永远无法匹配
+        │
+        ▼ 遍历到字库末尾 → pIndex 指向默认图形
+        显示：方框内问号 □?
+```
+
+#### OLED_Data.h 宏的全局影响
+
+宏 `OLED_CHARSET_xxx` 在编译期同时影响两个地方：
+
+| 影响点 | `OLED_CHARSET_UTF8` | `OLED_CHARSET_GB2312` |
+|--------|---------------------|-----------------------|
+| `ChineseCell_t.Index` 大小 | `char[5]` | `char[3]` |
+| `OLED_ShowString()` 解析逻辑 | 按 UTF-8 首字节前缀解析（1~4字节） | 按 bit7 判断（0→ASCII, 1→2字节汉字） |
+
+**`--no-multibyte-chars` 的作用：** 此编译器标志告诉 ARMCC 5 将源文件中的所有多字节字符当作单字节序列处理。这意味着：
+
+- UTF-8 源文件中的中文字符串 **不会被编译器转码**
+- 字符串字面量在二进制中保持 UTF-8 的原始字节
+- 运行时 `OLED_ShowString()` 接收到的是 UTF-8 字节流
+
+### 影响范围
+
+所有调用 `OLED_ShowString()` 或 `OLED_Printf()` 显示汉字的源文件均受影响：
+
+| 文件 | 涉及汉字 | 调用方式 |
+|------|---------|---------|
+| `menu.c` | "菜单"、"设置"、"日期时间设置"、"开始"、"停止"、"清除" | `OLED_ShowString()`, `OLED_Printf()` |
+| `SetTime.c` | "年"、"月"、"日"、"时"、"分"、"秒" | `OLED_Printf()` |
+
+### 解决方案
+
+**需要同时修改三处：**
+
+#### 1. 修改 OLED_Data.h 宏定义
+
+```c
+// 修改前
+#define OLED_CHARSET_UTF8           //定义字符集为UTF8
+//#define OLED_CHARSET_GB2312       //定义字符集为GB2312
+
+// 修改后
+//#define OLED_CHARSET_UTF8         //定义字符集为UTF8
+#define OLED_CHARSET_GB2312         //定义字符集为GB2312
+```
+
+#### 2. 将 menu.c 转换为 GBK 编码
+
+```powershell
+$path = "SmartWatch_HAL\HAL\Core\Src\Hardware\menu.c"
+$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+$gbk = [System.Text.Encoding]::GetEncoding("GBK")
+[System.IO.File]::WriteAllText($path, $content, $gbk)
+```
+
+#### 3. 将 SetTime.c 转换为 GBK 编码
+
+```powershell
+$path = "SmartWatch_HAL\HAL\Core\Src\Hardware\SetTime.c"
+$content = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+$gbk = [System.Text.Encoding]::GetEncoding("GBK")
+[System.IO.File]::WriteAllText($path, $content, $gbk)
+```
+
+#### 修复原理
+
+修复后数据流：
+
+```
+menu.c 源文件（GBK）:    "菜单" = B2 CB B5 A5  (4 bytes)
+        │
+        ▼ ARMCC 5 + --no-multibyte-chars
+        │ 按单字节序列原样存储
+        ▼
+运行时内存中的字符串:    B2 CB B5 A5  (GBK 原样)
+        │
+        ▼ OLED_ShowString() GB2312 模式
+        │ bit7=1 → 取2字节: B2 CB, B5 A5
+        │ SingleChar = {B2, CB, 00}, {B5, A5, 00}
+        │
+        ▼ strcmp 匹配字库
+字库索引（GB2312）:      B2 CB (菜) ✓, B5 A5 (单) ✓
+                         strcmp = 0，匹配成功！
+        │
+        ▼ 显示字模数据
+        显示：正常的"菜单"汉字
+```
+
+#### 字库完整性验证
+
+修复前已验证字库 `OLED_CF16x16[]` 包含所有需要显示的汉字：
+
+| 字符 | GB2312 编码 | 字库索引位置 |
+|------|------------|------------|
+| 菜 | B2 CB | [6] |
+| 单 | B5 A5 | [7] |
+| 设 | C9 E8 | [8] |
+| 置 | D6 C3 | [9] |
+| 日 | C8 D5 | [10], [16]（重复） |
+| 期 | C6 DA | [11] |
+| 时 | CA B1 | [12], [17]（重复） |
+| 间 | BC E4 | [13] |
+| 年 | C4 EA | [14] |
+| 月 | D4 C2 | [15] |
+| 分 | B7 D6 | [18] |
+| 秒 | C3 EB | [19] |
+| 开 | BF AA | [20] |
+| 始 | CA BC | [21] |
+| 停 | CD A3 | [22] |
+| 止 | D6 B9 | [23] |
+| 清 | C7 E5 | [24] |
+| 除 | B3 FD | [25] |
+
+> 字库数据完整，所有需要显示的汉字均有对应字模。问题纯粹是编码不匹配导致的 `strcmp` 匹配失败。
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Inc/Hardware/OLED_Data.h` | 第 8~9 行：注释 `OLED_CHARSET_UTF8`，启用 `OLED_CHARSET_GB2312` |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | 文件编码从 UTF-8 (with BOM) 转为 GBK |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/SetTime.c` | 文件编码从 UTF-8 转为 GBK |
+
+### 与问题一、问题四的关系
+
+四个问题构成完整的编码修复链条：
+
+```
+问题一：OLED_Data.c 编译报错
+  ├─ 根因：UTF-8 文件被 ARMCC 按 GBK 解析
+  ├─ 修复：转换 OLED_Data.c 编码 + 添加 --no-multibyte-chars
+  └─ 遗留①：未同步修改 OLED_Data.h 宏定义  ← 埋下问题五 Part A
+
+问题四：menu.c 编译报错
+  ├─ 根因：同问题一，menu.c 仍是 UTF-8
+  ├─ 修复（文档记录）：转换 menu.c 编码为 GBK
+  ├─ 实际状态：转换未执行，文件仍为 UTF-8 ← 埋下问题五 Part B
+  └─ 遗漏：SetTime.c 同样包含中文字符串但未被发现
+
+问题五：汉字显示异常（本问题）
+  ├─ 根因 Part A：OLED_CHARSET_UTF8 宏与 GBK 编码文件不匹配
+  │   └─ 修复：切换宏定义为 OLED_CHARSET_GB2312
+  ├─ 根因 Part B：menu.c + SetTime.c 仍为 UTF-8 编码
+  │   └─ 修复：转换两个文件为 GBK 编码
+  └─ 结果：汉字正常显示 ✅
+```
+
+### 经验总结
+
+1. **编码修复是系统工程，必须闭环验证。** 问题一修复了 `OLED_Data.c`，问题四"记录"了 `menu.c` 的修复但实际上未执行。编码问题不能仅凭文档记录判断"已修复"，必须用工具验证文件的实际字节。
+
+2. **`--no-multibyte-chars` 是把双刃剑。** 它解决了 UTF-8 源文件在 GBK locale 编译器下的词法解析问题，但也意味着字符串字面量的最终二进制编码**完全取决于源文件的物理编码**。如果源文件是 UTF-8，字符串就是 UTF-8；如果源文件是 GBK，字符串就是 GBK。
+
+3. **排查方法：** 使用 `file` 命令（Linux/macOS）或检查 BOM 字节来判断文件编码，使用 `xxd` 验证关键中文字符串的字节是否与字库索引一致。
+
+| 检查项 | 问题一修复后 | 问题四文档记录 | 问题五修复后 |
+|--------|------------|-------------|------------|
+| `OLED_Data.c` 编译通过 | ✅ | ✅ | ✅ |
+| `menu.c` 编译通过 | ❌ | ✅ | ✅ |
+| `SetTime.c` 编译通过 | ✅ | ✅ | ✅ |
+| `OLED_Data.h` 宏定义 | ❌ UTF8 | ❌ UTF8 | ✅ GB2312 |
+| `menu.c` 文件编码 | UTF-8 ❌ | GBK（文档记录，实际未改）❌ | GBK ✅ |
+| `SetTime.c` 文件编码 | UTF-8 ❌ | UTF-8 ❌ | GBK ✅ |
+| `strcmp` 匹配结果 | ❌ 永远失败 | ❌ 永远失败 | ✅ 正常匹配 |
+| 汉字显示效果 | ❌ 方框问号 | ❌ 方框问号 | ✅ 正常显示 |

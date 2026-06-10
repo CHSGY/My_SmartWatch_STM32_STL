@@ -1,12 +1,12 @@
 /**
   * @file           : SetTime.c
-  * @brief          : æ—¥æœŸæ—¶é—´è®¾ç½®åŠŸèƒ½ï¼ˆHALåº“ç‰ˆæœ¬ï¼‰
+  * @brief          : ÈÕÆÚÊ±¼äÉèÖÃ¹¦ÄÜ£¨HAL¿â°æ±¾£©
   * @author         : CHSGY
   * @date           : 2026-06-08
   *
-  * @note           : ä»æ ‡å‡†åº“SetTime.cç§»æ¤ï¼Œä¸»è¦ä¿®æ”¹ç‚¹ï¼š
-  *                   1. å¤´æ–‡ä»¶ï¼šstm32f10x.h â†’ main.h
-  *                   2. å¤´æ–‡ä»¶è·¯å¾„ï¼šOLED.h/Key.h/menu.h â†’ Hardware/å‰ç¼€
+  * @note           : ´Ó±ê×¼¿âSetTime.cÒÆÖ²£¬Ö÷ÒªĞŞ¸Äµã£º
+  *                   1. Í·ÎÄ¼ş£ºstm32f10x.h ¡ú main.h
+  *                   2. Í·ÎÄ¼şÂ·¾¶£ºOLED.h/Key.h/menu.h ¡ú Hardware/Ç°×º
   */
 
 #include "main.h"
@@ -17,39 +17,39 @@
 #include "Hardware/SetTime.h"
 
 
-/***************************æ—¥æœŸæ—¶é—´è®¾ç½®åŠŸèƒ½***********************************/
+/***************************ÈÕÆÚÊ±¼äÉèÖÃ¹¦ÄÜ***********************************/
 
 /**
-  * @brief æ˜¾ç¤ºæ—¥æœŸè®¾ç½®UI
-  * @param  æ— 
-  * @retval æ— 
+  * @brief ÏÔÊ¾ÈÕÆÚÉèÖÃUI
+  * @param  ÎŞ
+  * @retval ÎŞ
   */
 void Show_SetDate_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);
-	OLED_Printf(0,16,OLED_8X16,"å¹´:%4d",MyRTC_Time[0]);		//æ˜¾ç¤ºå¹´
-	OLED_Printf(0,32,OLED_8X16,"æœˆ:%2d",MyRTC_Time[1]);		//æ˜¾ç¤ºæœˆ
-	OLED_Printf(0,48,OLED_8X16,"æ—¥:%2d",MyRTC_Time[2]);      //æ˜¾ç¤ºæ—¥
+	OLED_Printf(0,16,OLED_8X16,"Äê:%4d",MyRTC_Time[0]);		//ÏÔÊ¾Äê
+	OLED_Printf(0,32,OLED_8X16,"ÔÂ:%2d",MyRTC_Time[1]);		//ÏÔÊ¾ÔÂ
+	OLED_Printf(0,48,OLED_8X16,"ÈÕ:%2d",MyRTC_Time[2]);      //ÏÔÊ¾ÈÕ
 }
 
 /**
-  * @brief æ˜¾ç¤ºæ—¶é—´è®¾ç½®UI
-  * @param  æ— 
-  * @retval æ— 
+  * @brief ÏÔÊ¾Ê±¼äÉèÖÃUI
+  * @param  ÎŞ
+  * @retval ÎŞ
   */
 void Show_SetTime_UI(void)
 {
-	OLED_Printf(0,0,OLED_8X16,"æ—¶:%2d",MyRTC_Time[3]);		//æ˜¾ç¤ºæ—¶
-	OLED_Printf(0,16,OLED_8X16,"åˆ†:%2d",MyRTC_Time[4]);		//æ˜¾ç¤ºåˆ†
-	OLED_Printf(0,32,OLED_8X16,"ç§’:%2d",MyRTC_Time[5]);       //æ˜¾ç¤ºç§’
+	OLED_Printf(0,0,OLED_8X16,"Ê±:%2d",MyRTC_Time[3]);		//ÏÔÊ¾Ê±
+	OLED_Printf(0,16,OLED_8X16,"·Ö:%2d",MyRTC_Time[4]);		//ÏÔÊ¾·Ö
+	OLED_Printf(0,32,OLED_8X16,"Ãë:%2d",MyRTC_Time[5]);       //ÏÔÊ¾Ãë
 
 }
 
 /**
-  * @brief ä¿®æ”¹RTCæ—¶é—´å€¼
-  * @param  i    æ—¶é—´æ•°ç»„ç´¢å¼•ï¼š0-å¹´ 1-æœˆ 2-æ—¥ 3-æ—¶ 4-åˆ† 5-ç§’
-  * @param  flag ä¿®æ”¹æ–¹å‘ï¼š0-å‡1 1-åŠ 1
-  * @retval æ— 
+  * @brief ĞŞ¸ÄRTCÊ±¼äÖµ
+  * @param  i    Ê±¼äÊı×éË÷Òı£º0-Äê 1-ÔÂ 2-ÈÕ 3-Ê± 4-·Ö 5-Ãë
+  * @param  flag ĞŞ¸Ä·½Ïò£º0-¼õ1 1-¼Ó1
+  * @retval ÎŞ
   */
 void ChangeRTC_Time(uint8_t i,uint8_t flag)
 {
@@ -61,15 +61,15 @@ void ChangeRTC_Time(uint8_t i,uint8_t flag)
 	{
 		MyRTC_Time[i]++;
 	}
-	MyRTC_SetTime(); 				//æŠŠæ›´æ–°åçš„æ—¶é—´å€¼ä»ç»“æ„ä½“æ•°ç»„ä¸­åˆ·æ–°åˆ°RTCç§’å®šæ—¶å™¨ç¡¬ä»¶ç”µè·¯ä¸­
+	MyRTC_SetTime(); 				//°Ñ¸üĞÂºóµÄÊ±¼äÖµ´Ó½á¹¹ÌåÊı×éÖĞË¢ĞÂµ½RTCÃë¶¨Ê±Æ÷Ó²¼şµçÂ·ÖĞ
 }
 
-static uint8_t KeyNum;             /* ä¸´æ—¶æŒ‰é”®é”®ç å˜é‡ */
+static uint8_t KeyNum;             /* ÁÙÊ±°´¼ü¼üÂë±äÁ¿ */
 
 /**
-  * @brief è®¾ç½®å¹´ä»½
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ å¹´ä»½ Key2å‡å°‘å¹´ä»½ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃÄê·İ
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼ÓÄê·İ Key2¼õÉÙÄê·İ Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Year(void)
 {
@@ -77,7 +77,7 @@ int Set_Year(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1) //Key1ï¼šadd Year 
+		if(KeyNum == 1) //Key1£ºadd Year 
 		{
 			ChangeRTC_Time(0,1);
 			KeyNum = 0;
@@ -101,9 +101,9 @@ int Set_Year(void)
 }
 
 /**
-  * @brief è®¾ç½®æœˆä»½
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ æœˆä»½ Key2å‡å°‘æœˆä»½ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃÔÂ·İ
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼ÓÔÂ·İ Key2¼õÉÙÔÂ·İ Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Month(void)
 {
@@ -111,7 +111,7 @@ int Set_Month(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1ï¼šadd Month 
+		if(KeyNum == 1)         //Key1£ºadd Month 
 		{
 			ChangeRTC_Time(1,1);
 			if(MyRTC_Time[1] > 12)
@@ -144,9 +144,9 @@ int Set_Month(void)
 }
 
 /**
-  * @brief è®¾ç½®æ—¥æœŸ
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ æ—¥æœŸ Key2å‡å°‘æ—¥æœŸ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃÈÕÆÚ
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼ÓÈÕÆÚ Key2¼õÉÙÈÕÆÚ Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Day(void)
 {
@@ -154,7 +154,7 @@ int Set_Day(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1ï¼šadd Day
+		if(KeyNum == 1)         //Key1£ºadd Day
 		{
 			ChangeRTC_Time(2,1);
 			if(MyRTC_Time[2] >= 32)
@@ -186,9 +186,9 @@ int Set_Day(void)
 }
 
 /**
-  * @brief è®¾ç½®å°æ—¶
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ å°æ—¶ Key2å‡å°‘å°æ—¶ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃĞ¡Ê±
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼ÓĞ¡Ê± Key2¼õÉÙĞ¡Ê± Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Hour(void)
 {
@@ -196,7 +196,7 @@ int Set_Hour(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1ï¼šadd Hour 
+		if(KeyNum == 1)     //Key1£ºadd Hour 
 		{
             ChangeRTC_Time(3,1);
             if(MyRTC_Time[3] >= 25)
@@ -219,7 +219,7 @@ int Set_Hour(void)
 			return 0;
 		}
 		
-		/*æ— æŒ‰é”®æ“ä½œæ—¶ï¼Œæ˜¾ç¤ºæ—¶é—´è®¾ç½®é¡µé¢å¹¶é«˜äº®å¯¹åº”è®¾ç½®é¡¹*/
+		/*ÎŞ°´¼ü²Ù×÷Ê±£¬ÏÔÊ¾Ê±¼äÉèÖÃÒ³Ãæ²¢¸ßÁÁ¶ÔÓ¦ÉèÖÃÏî*/
 		Show_SetTime_UI();
 		OLED_ReverseArea(24,0,16,16);
 		OLED_Update();
@@ -229,9 +229,9 @@ int Set_Hour(void)
 }
 
 /**
-  * @brief è®¾ç½®åˆ†é’Ÿ
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ åˆ†é’Ÿ Key2å‡å°‘åˆ†é’Ÿ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃ·ÖÖÓ
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼Ó·ÖÖÓ Key2¼õÉÙ·ÖÖÓ Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Min(void)
 {
@@ -239,7 +239,7 @@ int Set_Min(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1ï¼šadd Min 
+		if(KeyNum == 1)     //Key1£ºadd Min 
 		{
             ChangeRTC_Time(5,1);
             if(MyRTC_Time[5] >= 60)
@@ -272,9 +272,9 @@ int Set_Min(void)
 }
 
 /**
-  * @brief è®¾ç½®ç§’é’Ÿ
-  * @retval 0-è¿”å›
-  * @note  Key1å¢åŠ ç§’é’Ÿ Key2å‡å°‘ç§’é’Ÿ Key3ç¡®è®¤å¹¶è¿”å›
+  * @brief ÉèÖÃÃëÖÓ
+  * @retval 0-·µ»Ø
+  * @note  Key1Ôö¼ÓÃëÖÓ Key2¼õÉÙÃëÖÓ Key3È·ÈÏ²¢·µ»Ø
   */
 int Set_Sec(void)
 {
@@ -282,7 +282,7 @@ int Set_Sec(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1ï¼šadd Sec 
+		if(KeyNum == 1)         //Key1£ºadd Sec 
 		{
             ChangeRTC_Time(5,1);
             if(MyRTC_Time[5] >= 60)
@@ -315,12 +315,12 @@ int Set_Sec(void)
 }
 
 
-uint8_t Key_CursorFlag = 1;         /* æ—¥æœŸæ—¶é—´è®¾ç½®é¡µé¢å…‰æ ‡ä½ç½®ï¼š1-è¿”å› 2-å¹´ 3-æœˆ 4-æ—¥ 5-æ—¶ 6-åˆ† 7-ç§’ */
+uint8_t Key_CursorFlag = 1;         /* ÈÕÆÚÊ±¼äÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-Äê 3-ÔÂ 4-ÈÕ 5-Ê± 6-·Ö 7-Ãë */
 
 /**
-  * @brief æ—¥æœŸæ—¶é—´è®¾ç½®ä¸»æµç¨‹
-  * @retval 0-è¿”å›
-  * @note  è´Ÿè´£æ—¥æœŸæ—¶é—´è®¾ç½®çš„é¡µé¢è·³è½¬å’ŒåŠŸèƒ½é€‰æ‹©
+  * @brief ÈÕÆÚÊ±¼äÉèÖÃÖ÷Á÷³Ì
+  * @retval 0-·µ»Ø
+  * @note  ¸ºÔğÈÕÆÚÊ±¼äÉèÖÃµÄÒ³ÃæÌø×ªºÍ¹¦ÄÜÑ¡Ôñ
   */
 int SetTime_mainprocess(void)
 {
@@ -329,7 +329,7 @@ int SetTime_mainprocess(void)
 
 		KeyNum = Key_GetNum();
 		uint8_t Key_FuncFlag = 0;
-		if(KeyNum == 1)       //å…‰æ ‡é€’å¢
+		if(KeyNum == 1)       //¹â±êµİÔö
 		{
 			Key_CursorFlag++;
 			if(Key_CursorFlag > 7)
@@ -337,7 +337,7 @@ int SetTime_mainprocess(void)
 				Key_CursorFlag = 1;
 			}
 		}
-		else if(KeyNum == 2)  //å…‰æ ‡é€’å‡
+		else if(KeyNum == 2)  //¹â±êµİ¼õ
 		{
 			Key_CursorFlag--;
 			if(Key_CursorFlag <= 0)
@@ -345,14 +345,14 @@ int SetTime_mainprocess(void)
 				Key_CursorFlag = 7;
 			}
 		}
-		else if(KeyNum == 3)  //ç¡®å®š
+		else if(KeyNum == 3)  //È·¶¨
 		{
 			//OLED_Clear();
 			//OLED_Update();
 			Key_FuncFlag = Key_CursorFlag;
 		}
 		
-		/*******æŒ‰é”®æ—¶é—´æ—¥æœŸè°ƒæ•´åŠŸèƒ½è§¦å‘*******/
+		/*******°´¼üÊ±¼äÈÕÆÚµ÷Õû¹¦ÄÜ´¥·¢*******/
 		if(Key_FuncFlag == 1)
 		{
 			Key_FuncFlag = 0;
@@ -366,46 +366,46 @@ int SetTime_mainprocess(void)
 		else if(Key_FuncFlag == 7){Set_Sec();}
 		else{;}
 		
-		/***********æŒ‰é”®é€‰æ‹©å…‰æ ‡ä½ç½®*********/
+		/***********°´¼üÑ¡Ôñ¹â±êÎ»ÖÃ*********/
 		switch(Key_CursorFlag)
 		{
-			case 1:                     //[è¿”å›]
+			case 1:                     //[·µ»Ø]
 				OLED_Clear();
 				Show_SetDate_UI();
 				OLED_ReverseArea(0,0,16,16);
 				OLED_Update();
 			    break;
-            case 2:                     //å¹´
+            case 2:                     //Äê
                 OLED_Clear();
 				Show_SetDate_UI();
 				OLED_ReverseArea(24,16,32,16);
 				OLED_Update();
 			    break;
-            case 3:                     //æœˆ
+            case 3:                     //ÔÂ
                 OLED_Clear();
 				Show_SetDate_UI();
 				OLED_ReverseArea(24,32,16,16);
 				OLED_Update();
 			    break;
-            case 4:                     //æ—¥
+            case 4:                     //ÈÕ
                 OLED_Clear();
 				Show_SetDate_UI();
 				OLED_ReverseArea(24,48,16,16);
 				OLED_Update();
 			    break;
-            case 5:                     //æ—¶
+            case 5:                     //Ê±
                 OLED_Clear();
 				Show_SetTime_UI();
 				OLED_ReverseArea(24,0,16,16);
 				OLED_Update();
 			    break;
-            case 6:                     //åˆ†
+            case 6:                     //·Ö
                 OLED_Clear();
 				Show_SetTime_UI();
 				OLED_ReverseArea(24,16,16,16);
 				OLED_Update();
 			    break;
-            case 7:                     //ç§’
+            case 7:                     //Ãë
                 OLED_Clear();
 				Show_SetTime_UI();
 				OLED_ReverseArea(24,32,16,16);
