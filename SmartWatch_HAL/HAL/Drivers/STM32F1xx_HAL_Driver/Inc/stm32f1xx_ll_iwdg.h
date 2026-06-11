@@ -6,12 +6,13 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2016 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2016 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -44,10 +45,12 @@ extern "C" {
 /** @defgroup IWDG_LL_Private_Constants IWDG Private Constants
   * @{
   */
+
 #define LL_IWDG_KEY_RELOAD                 0x0000AAAAU               /*!< IWDG Reload Counter Enable   */
 #define LL_IWDG_KEY_ENABLE                 0x0000CCCCU               /*!< IWDG Peripheral Enable       */
 #define LL_IWDG_KEY_WR_ACCESS_ENABLE       0x00005555U               /*!< IWDG KR Write Access Enable  */
 #define LL_IWDG_KEY_WR_ACCESS_DISABLE      0x00000000U               /*!< IWDG KR Write Access Disable */
+
 /**
   * @}
   */
@@ -66,6 +69,7 @@ extern "C" {
   */
 #define LL_IWDG_SR_PVU                     IWDG_SR_PVU                           /*!< Watchdog prescaler value update */
 #define LL_IWDG_SR_RVU                     IWDG_SR_RVU                           /*!< Watchdog counter reload value update */
+
 /**
   * @}
   */
@@ -139,7 +143,7 @@ extern "C" {
   */
 __STATIC_INLINE void LL_IWDG_Enable(IWDG_TypeDef *IWDGx)
 {
-  WRITE_REG(IWDGx->KR, LL_IWDG_KEY_ENABLE);
+  WRITE_REG(IWDG->KR, LL_IWDG_KEY_ENABLE);
 }
 
 /**
@@ -150,7 +154,7 @@ __STATIC_INLINE void LL_IWDG_Enable(IWDG_TypeDef *IWDGx)
   */
 __STATIC_INLINE void LL_IWDG_ReloadCounter(IWDG_TypeDef *IWDGx)
 {
-  WRITE_REG(IWDGx->KR, LL_IWDG_KEY_RELOAD);
+  WRITE_REG(IWDG->KR, LL_IWDG_KEY_RELOAD);
 }
 
 /**
@@ -161,7 +165,7 @@ __STATIC_INLINE void LL_IWDG_ReloadCounter(IWDG_TypeDef *IWDGx)
   */
 __STATIC_INLINE void LL_IWDG_EnableWriteAccess(IWDG_TypeDef *IWDGx)
 {
-  WRITE_REG(IWDGx->KR, LL_IWDG_KEY_WR_ACCESS_ENABLE);
+  WRITE_REG(IWDG->KR, LL_IWDG_KEY_WR_ACCESS_ENABLE);
 }
 
 /**
@@ -172,7 +176,7 @@ __STATIC_INLINE void LL_IWDG_EnableWriteAccess(IWDG_TypeDef *IWDGx)
   */
 __STATIC_INLINE void LL_IWDG_DisableWriteAccess(IWDG_TypeDef *IWDGx)
 {
-  WRITE_REG(IWDGx->KR, LL_IWDG_KEY_WR_ACCESS_DISABLE);
+  WRITE_REG(IWDG->KR, LL_IWDG_KEY_WR_ACCESS_DISABLE);
 }
 
 /**
@@ -207,9 +211,9 @@ __STATIC_INLINE void LL_IWDG_SetPrescaler(IWDG_TypeDef *IWDGx, uint32_t Prescale
   *         @arg @ref LL_IWDG_PRESCALER_128
   *         @arg @ref LL_IWDG_PRESCALER_256
   */
-__STATIC_INLINE uint32_t LL_IWDG_GetPrescaler(const IWDG_TypeDef *IWDGx)
+__STATIC_INLINE uint32_t LL_IWDG_GetPrescaler(IWDG_TypeDef *IWDGx)
 {
-  return (READ_REG(IWDGx->PR));
+  return (uint32_t)(READ_REG(IWDGx->PR));
 }
 
 /**
@@ -230,10 +234,11 @@ __STATIC_INLINE void LL_IWDG_SetReloadCounter(IWDG_TypeDef *IWDGx, uint32_t Coun
   * @param  IWDGx IWDG Instance
   * @retval Value between Min_Data=0 and Max_Data=0x0FFF
   */
-__STATIC_INLINE uint32_t LL_IWDG_GetReloadCounter(const IWDG_TypeDef *IWDGx)
+__STATIC_INLINE uint32_t LL_IWDG_GetReloadCounter(IWDG_TypeDef *IWDGx)
 {
-  return (READ_REG(IWDGx->RLR));
+  return (uint32_t)(READ_REG(IWDGx->RLR));
 }
+
 
 /**
   * @}
@@ -249,9 +254,9 @@ __STATIC_INLINE uint32_t LL_IWDG_GetReloadCounter(const IWDG_TypeDef *IWDGx)
   * @param  IWDGx IWDG Instance
   * @retval State of bit (1 or 0).
   */
-__STATIC_INLINE uint32_t LL_IWDG_IsActiveFlag_PVU(const IWDG_TypeDef *IWDGx)
+__STATIC_INLINE uint32_t LL_IWDG_IsActiveFlag_PVU(IWDG_TypeDef *IWDGx)
 {
-  return ((READ_BIT(IWDGx->SR, IWDG_SR_PVU) == (IWDG_SR_PVU)) ? 1UL : 0UL);
+  return (READ_BIT(IWDGx->SR, IWDG_SR_PVU) == (IWDG_SR_PVU));
 }
 
 /**
@@ -260,36 +265,38 @@ __STATIC_INLINE uint32_t LL_IWDG_IsActiveFlag_PVU(const IWDG_TypeDef *IWDGx)
   * @param  IWDGx IWDG Instance
   * @retval State of bit (1 or 0).
   */
-__STATIC_INLINE uint32_t LL_IWDG_IsActiveFlag_RVU(const IWDG_TypeDef *IWDGx)
+__STATIC_INLINE uint32_t LL_IWDG_IsActiveFlag_RVU(IWDG_TypeDef *IWDGx)
 {
-  return ((READ_BIT(IWDGx->SR, IWDG_SR_RVU) == (IWDG_SR_RVU)) ? 1UL : 0UL);
+  return (READ_BIT(IWDGx->SR, IWDG_SR_RVU) == (IWDG_SR_RVU));
 }
 
+
 /**
-  * @brief  Check if flags Prescaler & Reload Value Update are reset or not
+  * @brief  Check if all flags Prescaler, Reload & Window Value Update are reset or not
   * @rmtoll SR           PVU           LL_IWDG_IsReady\n
   *         SR           RVU           LL_IWDG_IsReady
   * @param  IWDGx IWDG Instance
   * @retval State of bits (1 or 0).
   */
-__STATIC_INLINE uint32_t LL_IWDG_IsReady(const IWDG_TypeDef *IWDGx)
+__STATIC_INLINE uint32_t LL_IWDG_IsReady(IWDG_TypeDef *IWDGx)
 {
-  return ((READ_BIT(IWDGx->SR, IWDG_SR_PVU | IWDG_SR_RVU) == 0U) ? 1UL : 0UL);
+  return (READ_BIT(IWDGx->SR, IWDG_SR_PVU | IWDG_SR_RVU) == 0U);
 }
 
 /**
   * @}
   */
 
-/**
-  * @}
-  */
 
 /**
   * @}
   */
 
-#endif /* IWDG */
+/**
+  * @}
+  */
+
+#endif /* IWDG) */
 
 /**
   * @}
@@ -300,3 +307,5 @@ __STATIC_INLINE uint32_t LL_IWDG_IsReady(const IWDG_TypeDef *IWDGx)
 #endif
 
 #endif /* STM32F1xx_LL_IWDG_H */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

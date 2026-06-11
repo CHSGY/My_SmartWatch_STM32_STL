@@ -6,12 +6,13 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2016 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2016 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -26,7 +27,7 @@
 #include "stm32_assert.h"
 #else
 #define assert_param(expr) ((void)0U)
-#endif /* USE_FULL_ASSERT */
+#endif
 
 /** @addtogroup STM32F1xx_LL_Driver
   * @{
@@ -119,7 +120,7 @@
   *          - SUCCESS: SPI registers are de-initialized
   *          - ERROR: SPI registers are not de-initialized
   */
-ErrorStatus LL_SPI_DeInit(const SPI_TypeDef *SPIx)
+ErrorStatus LL_SPI_DeInit(SPI_TypeDef *SPIx)
 {
   ErrorStatus status = ERROR;
 
@@ -168,9 +169,8 @@ ErrorStatus LL_SPI_DeInit(const SPI_TypeDef *SPIx)
 
 /**
   * @brief  Initialize the SPI registers according to the specified parameters in SPI_InitStruct.
-  * @note   As some bits in SPI configuration registers can only be written when the
-  *         SPI is disabled (SPI_CR1_SPE bit = 0), SPI peripheral should be in disabled state prior
-  *         calling this function. Otherwise, ERROR result will be returned.
+  * @note   As some bits in SPI configuration registers can only be written when the SPI is disabled (SPI_CR1_SPE bit =0),
+  *         SPI peripheral should be in disabled state prior calling this function. Otherwise, ERROR result will be returned.
   * @param  SPIx SPI Instance
   * @param  SPI_InitStruct pointer to a @ref LL_SPI_InitTypeDef structure
   * @retval An ErrorStatus enumeration value. (Return always SUCCESS)
@@ -349,7 +349,7 @@ void LL_SPI_StructInit(LL_SPI_InitTypeDef *SPI_InitStruct)
   *          - SUCCESS: SPI registers are de-initialized
   *          - ERROR: SPI registers are not de-initialized
   */
-ErrorStatus LL_I2S_DeInit(const SPI_TypeDef *SPIx)
+ErrorStatus LL_I2S_DeInit(SPI_TypeDef *SPIx)
 {
   return LL_SPI_DeInit(SPIx);
 }
@@ -527,3 +527,4 @@ void LL_I2S_ConfigPrescaler(SPI_TypeDef *SPIx, uint32_t PrescalerLinear, uint32_
 
 #endif /* USE_FULL_LL_DRIVER */
 
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

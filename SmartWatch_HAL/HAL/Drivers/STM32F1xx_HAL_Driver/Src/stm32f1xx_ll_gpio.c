@@ -6,12 +6,13 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2016 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2016 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -184,20 +185,15 @@ ErrorStatus LL_GPIO_Init(GPIO_TypeDef *GPIOx, LL_GPIO_InitTypeDef *GPIO_InitStru
         currentpin = ((0x00010001u << (pinpos - GPIO_PIN_MASK_POS)) | 0x04000000u);
       }
 
-      if (GPIO_InitStruct->Mode == LL_GPIO_MODE_INPUT)
-      {
-        /* Check The Pull parameter */
-        assert_param(IS_LL_GPIO_PULL(GPIO_InitStruct->Pull));
-
-        /* Pull-up Pull-down resistor configuration*/
-        LL_GPIO_SetPinPull(GPIOx, currentpin, GPIO_InitStruct->Pull);
-      }
-      
-      /* Check Pin Mode parameters */
+      /* Check Pin Mode and Pin Pull parameters */
       assert_param(IS_LL_GPIO_MODE(GPIO_InitStruct->Mode));
-      
+      assert_param(IS_LL_GPIO_PULL(GPIO_InitStruct->Pull));
+
       /* Pin Mode configuration */
       LL_GPIO_SetPinMode(GPIOx, currentpin, GPIO_InitStruct->Mode);
+
+      /* Pull-up Pull-down resistor configuration*/
+      LL_GPIO_SetPinPull(GPIOx, currentpin, GPIO_InitStruct->Pull);
 
       if ((GPIO_InitStruct->Mode == LL_GPIO_MODE_OUTPUT) || (GPIO_InitStruct->Mode == LL_GPIO_MODE_ALTERNATE))
       {
@@ -254,3 +250,4 @@ void LL_GPIO_StructInit(LL_GPIO_InitTypeDef *GPIO_InitStruct)
 
 #endif /* USE_FULL_LL_DRIVER */
 
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

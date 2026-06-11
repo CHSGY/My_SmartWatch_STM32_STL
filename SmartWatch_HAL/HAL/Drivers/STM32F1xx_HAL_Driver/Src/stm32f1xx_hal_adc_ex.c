@@ -5,27 +5,34 @@
   * @brief   This file provides firmware functions to manage the following 
   *          functionalities of the Analog to Digital Convertor (ADC)
   *          peripheral:
-  *           + Peripheral Control functions
+  *           + Operation functions
+  *             ++ Start, stop, get result of conversions of injected
+  *                group, using 2 possible modes: polling, interruption.
+  *             ++ Multimode feature (available on devices with 2 ADCs or more)
+  *             ++ Calibration (ADC automatic self-calibration)
+  *           + Control functions
+  *             ++ Channels configuration on injected group
   *          Other functions (generic functions) are available in file 
   *          "stm32f1xx_hal_adc.c".
   *
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2016 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
   @verbatim
   [..] 
   (@) Sections "ADC peripheral features" and "How to use this driver" are
       available in file of generic functions "stm32f1xx_hal_adc.c".
   [..]
   @endverbatim
+  ******************************************************************************
+  * @attention
+  *
+  * <h2><center>&copy; Copyright (c) 2016 STMicroelectronics.
+  * All rights reserved.</center></h2>
+  *
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
+  *
+  ******************************************************************************
   */
 
 /* Includes ------------------------------------------------------------------*/
@@ -128,20 +135,20 @@ HAL_StatusTypeDef HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef* hadc)
   /* Process locked */
   __HAL_LOCK(hadc);
     
-   /* 1. Disable ADC peripheral                                                 */
-   tmp_hal_status = ADC_ConversionStop_Disable(hadc);
+  /* 1. Calibration prerequisite:                                             */
+  /*    - ADC must be disabled for at least two ADC clock cycles in disable   */
+  /*      mode before ADC enable                                              */
+  /* Stop potential conversion on going, on regular and injected groups       */
+  /* Disable ADC peripheral */
+  tmp_hal_status = ADC_ConversionStop_Disable(hadc);
   
-   /* 2. Calibration prerequisite delay before starting the calibration.       */
-   /*    - ADC must be enabled for at least two ADC clock cycles               */
-   tmp_hal_status = ADC_Enable(hadc);
-
-   /* Check if ADC is effectively enabled */
-   if (tmp_hal_status == HAL_OK)
-   {
-     /* Set ADC state */
-     ADC_STATE_CLR_SET(hadc->State,
-                       HAL_ADC_STATE_REG_BUSY | HAL_ADC_STATE_INJ_BUSY,
-                       HAL_ADC_STATE_BUSY_INTERNAL);
+  /* Check if ADC is effectively disabled */
+  if (tmp_hal_status == HAL_OK)
+  {
+    /* Set ADC state */
+    ADC_STATE_CLR_SET(hadc->State,
+                      HAL_ADC_STATE_REG_BUSY | HAL_ADC_STATE_INJ_BUSY,
+                      HAL_ADC_STATE_BUSY_INTERNAL);
     
     /* Hardware prerequisite: delay before starting the calibration.          */
     /*  - Computation of CPU clock cycles corresponding to ADC clock cycles.  */
@@ -154,7 +161,10 @@ HAL_StatusTypeDef HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef* hadc)
     {
       wait_loop_index--;
     }
-
+    
+    /* 2. Enable the ADC peripheral */
+    ADC_Enable(hadc);
+    
     /* 3. Resets ADC calibration registers */  
     SET_BIT(hadc->Instance->CR2, ADC_CR2_RSTCAL);
     
@@ -165,21 +175,18 @@ HAL_StatusTypeDef HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef* hadc)
     {
       if((HAL_GetTick() - tickstart) > ADC_CALIBRATION_TIMEOUT)
       {
-        /* New check to avoid false timeout detection in case of preemption */
-        if(HAL_IS_BIT_SET(hadc->Instance->CR2, ADC_CR2_RSTCAL))
-        {
-          /* Update ADC state machine to error */
-          ADC_STATE_CLR_SET(hadc->State,
-                            HAL_ADC_STATE_BUSY_INTERNAL,
-                            HAL_ADC_STATE_ERROR_INTERNAL);
-
-          /* Process unlocked */
-          __HAL_UNLOCK(hadc);
-
-          return HAL_ERROR;
-        }
+        /* Update ADC state machine to error */
+        ADC_STATE_CLR_SET(hadc->State,
+                          HAL_ADC_STATE_BUSY_INTERNAL,
+                          HAL_ADC_STATE_ERROR_INTERNAL);
+        
+        /* Process unlocked */
+        __HAL_UNLOCK(hadc);
+        
+        return HAL_ERROR;
       }
     }
+    
     
     /* 4. Start ADC calibration */
     SET_BIT(hadc->Instance->CR2, ADC_CR2_CAL);
@@ -191,19 +198,15 @@ HAL_StatusTypeDef HAL_ADCEx_Calibration_Start(ADC_HandleTypeDef* hadc)
     {
       if((HAL_GetTick() - tickstart) > ADC_CALIBRATION_TIMEOUT)
       {
-        /* New check to avoid false timeout detection in case of preemption */
-        if(HAL_IS_BIT_SET(hadc->Instance->CR2, ADC_CR2_CAL))
-        {
-          /* Update ADC state machine to error */
-          ADC_STATE_CLR_SET(hadc->State,
-                            HAL_ADC_STATE_BUSY_INTERNAL,
-                            HAL_ADC_STATE_ERROR_INTERNAL);
-
-          /* Process unlocked */
-          __HAL_UNLOCK(hadc);
-
-          return HAL_ERROR;
-        }
+        /* Update ADC state machine to error */
+        ADC_STATE_CLR_SET(hadc->State,
+                          HAL_ADC_STATE_BUSY_INTERNAL,
+                          HAL_ADC_STATE_ERROR_INTERNAL);
+        
+        /* Process unlocked */
+        __HAL_UNLOCK(hadc);
+        
+        return HAL_ERROR;
       }
     }
     
@@ -419,17 +422,13 @@ HAL_StatusTypeDef HAL_ADCEx_InjectedPollForConversion(ADC_HandleTypeDef* hadc, u
       {
         if((Timeout == 0U) || ((HAL_GetTick() - tickstart ) > Timeout))
         {
-          /* New check to avoid false timeout detection in case of preemption */
-          if(HAL_IS_BIT_CLR(hadc->Instance->SR, ADC_FLAG_JEOC))
-          {
-            /* Update ADC state machine to timeout */
-            SET_BIT(hadc->State, HAL_ADC_STATE_TIMEOUT);
-
-            /* Process unlocked */
-            __HAL_UNLOCK(hadc);
-
-            return HAL_TIMEOUT;
-          }
+          /* Update ADC state machine to timeout */
+          SET_BIT(hadc->State, HAL_ADC_STATE_TIMEOUT);
+          
+          /* Process unlocked */
+          __HAL_UNLOCK(hadc);
+          
+          return HAL_TIMEOUT;
         }
       }
     }
@@ -451,17 +450,13 @@ HAL_StatusTypeDef HAL_ADCEx_InjectedPollForConversion(ADC_HandleTypeDef* hadc, u
       {
         if((Timeout == 0)||((HAL_GetTick() - tickstart ) > Timeout))
         {
-          /* New check to avoid false timeout detection in case of preemption */
-          if(Conversion_Timeout_CPU_cycles < Conversion_Timeout_CPU_cycles_max)
-          {
-            /* Update ADC state machine to timeout */
-            SET_BIT(hadc->State, HAL_ADC_STATE_TIMEOUT);
+          /* Update ADC state machine to timeout */
+          SET_BIT(hadc->State, HAL_ADC_STATE_TIMEOUT);
 
-            /* Process unlocked */
-            __HAL_UNLOCK(hadc);
-
-            return HAL_TIMEOUT;
-          }
+          /* Process unlocked */
+          __HAL_UNLOCK(hadc);
+          
+          return HAL_TIMEOUT;
         }
       }
       Conversion_Timeout_CPU_cycles ++;
@@ -675,7 +670,7 @@ HAL_StatusTypeDef HAL_ADCEx_InjectedStop_IT(ADC_HandleTypeDef* hadc)
 HAL_StatusTypeDef HAL_ADCEx_MultiModeStart_DMA(ADC_HandleTypeDef* hadc, uint32_t* pData, uint32_t Length)
 {
   HAL_StatusTypeDef tmp_hal_status = HAL_OK;
-  ADC_HandleTypeDef tmphadcSlave={0};
+  ADC_HandleTypeDef tmphadcSlave;
 
   /* Check the parameters */
   assert_param(IS_ADC_MULTIMODE_MASTER_INSTANCE(hadc->Instance));
@@ -801,14 +796,15 @@ HAL_StatusTypeDef HAL_ADCEx_MultiModeStart_DMA(ADC_HandleTypeDef* hadc, uint32_t
 HAL_StatusTypeDef HAL_ADCEx_MultiModeStop_DMA(ADC_HandleTypeDef* hadc)
 {
   HAL_StatusTypeDef tmp_hal_status = HAL_OK;
-  ADC_HandleTypeDef tmphadcSlave={0};
+  ADC_HandleTypeDef tmphadcSlave;
   
   /* Check the parameters */
   assert_param(IS_ADC_MULTIMODE_MASTER_INSTANCE(hadc->Instance));
   
   /* Process locked */
   __HAL_LOCK(hadc);
-
+  
+ 
   /* Stop potential conversion on going, on regular and injected groups */
   /* Disable ADC master peripheral */
   tmp_hal_status = ADC_ConversionStop_Disable(hadc);
@@ -989,7 +985,7 @@ __weak void HAL_ADCEx_InjectedConvCpltCallback(ADC_HandleTypeDef* hadc)
   * @note   Possibility to update parameters on the fly:
   *         This function initializes injected group, following calls to this 
   *         function can be used to reconfigure some parameters of structure
-  *         "ADC_InjectionConfTypeDef" on the fly, without resetting the ADC.
+  *         "ADC_InjectionConfTypeDef" on the fly, without reseting the ADC.
   *         The setting of these parameters is conditioned to ADC state: 
   *         this function must be called when ADC is not under conversion.
   * @param  hadc: ADC handle
@@ -1247,7 +1243,7 @@ HAL_StatusTypeDef HAL_ADCEx_InjectedConfigChannel(ADC_HandleTypeDef* hadc, ADC_I
   * @note   Possibility to update parameters on the fly:
   *         This function initializes multimode parameters, following  
   *         calls to this function can be used to reconfigure some parameters 
-  *         of structure "ADC_MultiModeTypeDef" on the fly, without resetting 
+  *         of structure "ADC_MultiModeTypeDef" on the fly, without reseting 
   *         the ADCs (both ADCs of the common group).
   *         The setting of these parameters is conditioned to ADC state.
   *         For parameters constraints, see comments of structure 
@@ -1261,7 +1257,7 @@ HAL_StatusTypeDef HAL_ADCEx_InjectedConfigChannel(ADC_HandleTypeDef* hadc, ADC_I
 HAL_StatusTypeDef HAL_ADCEx_MultiModeConfigChannel(ADC_HandleTypeDef* hadc, ADC_MultiModeTypeDef* multimode)
 {
   HAL_StatusTypeDef tmp_hal_status = HAL_OK;
-  ADC_HandleTypeDef tmphadcSlave={0};
+  ADC_HandleTypeDef tmphadcSlave;
   
   /* Check the parameters */
   assert_param(IS_ADC_MULTIMODE_MASTER_INSTANCE(hadc->Instance));
@@ -1323,3 +1319,5 @@ HAL_StatusTypeDef HAL_ADCEx_MultiModeConfigChannel(ADC_HandleTypeDef* hadc, ADC_
 /**
   * @}
   */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

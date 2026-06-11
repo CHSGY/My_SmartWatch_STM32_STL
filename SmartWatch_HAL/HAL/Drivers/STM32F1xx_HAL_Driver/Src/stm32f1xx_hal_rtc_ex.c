@@ -12,12 +12,13 @@
   ******************************************************************************
   * @attention
   *
-  * Copyright (c) 2016 STMicroelectronics.
-  * All rights reserved.
+  * <h2><center>&copy; Copyright (c) 2016 STMicroelectronics.
+  * All rights reserved.</center></h2>
   *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
+  * This software component is licensed by ST under BSD 3-Clause license,
+  * the "License"; You may not use this file except in compliance with the
+  * License. You may obtain a copy of the License at:
+  *                        opensource.org/licenses/BSD-3-Clause
   *
   ******************************************************************************
   */
@@ -303,7 +304,7 @@ HAL_StatusTypeDef HAL_RTCEx_PollForTamper1Event(RTC_HandleTypeDef *hrtc, uint32_
                  ##### RTC Second functions #####
  ===============================================================================
 
- [..] This section provides functions implementing second interrupt handlers
+ [..] This section provides functions implementing second interupt handlers
 
 @endverbatim
   * @{
@@ -328,7 +329,7 @@ HAL_StatusTypeDef HAL_RTCEx_SetSecond_IT(RTC_HandleTypeDef *hrtc)
 
   hrtc->State = HAL_RTC_STATE_BUSY;
 
-  /* Enable Second interruption */
+  /* Enable Second interuption */
   __HAL_RTC_SECOND_ENABLE_IT(hrtc, RTC_IT_SEC);
 
   hrtc->State = HAL_RTC_STATE_READY;
@@ -358,7 +359,7 @@ HAL_StatusTypeDef HAL_RTCEx_DeactivateSecond(RTC_HandleTypeDef *hrtc)
 
   hrtc->State = HAL_RTC_STATE_BUSY;
 
-  /* Deactivate Second interruption*/
+  /* Deactivate Second interuption*/
   __HAL_RTC_SECOND_DISABLE_IT(hrtc, RTC_IT_SEC);
 
   hrtc->State = HAL_RTC_STATE_READY;
@@ -573,3 +574,6 @@ HAL_StatusTypeDef HAL_RTCEx_SetSmoothCalib(RTC_HandleTypeDef *hrtc, uint32_t Smo
 /**
   * @}
   */
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
