@@ -261,7 +261,7 @@ uint8_t move_stateFlag = 1;		//1:开始移动，0:停止移动
 */
 void Menu_Animation(void)
 {
-	OLED_Clear();
+	OLED_ClearArea(0, MENU_FRAME_Y - 2, 128, 48);
 	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);			//菜单选择框
 
 	//菜单整体左移
@@ -302,14 +302,14 @@ void Menu_Animation(void)
 	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
 	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);	//显示选中图标后第二个图标
 
-	OLED_Update();
+	OLED_UpdateArea(0, MENU_FRAME_Y - 2, 128, 48);
 }
 
 void MenuToFunction_Animation(void)
 {
 	for(uint8_t i=0; i<=MENU_ENTER_FRAMES; i++)
 	{
-		OLED_Clear();				//清屏
+		OLED_ClearArea(0, MENU_ICON_Y, 128, 48);				//清屏
 		if(Pre_item >= 1)			//当前选项及以后的菜单选项时
 		{
 			/*保证图标滑动的连续性*/
@@ -318,7 +318,7 @@ void MenuToFunction_Animation(void)
 			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//显示选中图标后第一个图标
 		}
 
-		OLED_Update();
+		OLED_UpdateArea(0, MENU_ICON_Y, 128, 48);
 	}
 }
 
@@ -435,9 +435,6 @@ uint8_t Menu_Page(void)
 			;
 		}
 
-		Menu_Animation();
-
-
 		if(MenuFlag==1)								//菜单位置：【返回】
 		{
 			if(Direct_Flag == 1)					//上一项
@@ -447,12 +444,17 @@ uint8_t Menu_Page(void)
 			else if(Direct_Flag == 2)				//下一项
 			{
 				Set_Selection(move_stateFlag,0,0);
-			} 
+			}
+			else
+			{
+				Menu_Animation();				//无按键，仅重画
+			}
 		}
 		else
 		{
 			if(Direct_Flag == 1){Set_Selection(move_stateFlag,MenuFlag,MenuFlag-1);}
 			else if(Direct_Flag == 2){Set_Selection(move_stateFlag,MenuFlag-2,MenuFlag-1);}
+			else {Menu_Animation();}			//无按键，仅重画
 		}
 		__WFI();	//等待中断唤醒，降低空闲功耗
 	}

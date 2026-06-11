@@ -39,7 +39,7 @@
 #define MENU_ICON_Y             16      /* 图标 Y 起始位置 */
 #define MENU_ICON_SIZE          32      /* 菜单图标尺寸(32x32) */
 #define MENU_ICON_SPACING       48      /* 图标间距(px) */
-#define MENU_SLIDE_STEP         4       /* 菜单滑动步长(px/帧) */
+#define MENU_SLIDE_STEP         8       /* 菜单滑动步长(px/帧) */
 #define MENU_ENTER_FRAMES       6       /* 进场动画帧数 */
 #define MENU_ENTER_STEP         8       /* 进场动画步距(px/帧) */
 
