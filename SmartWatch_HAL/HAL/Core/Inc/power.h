@@ -22,5 +22,6 @@
 
 uint8_t POWER_IsRunning(void);
 void POWER_Shutdown(void);
+void POWER_Boot(void);
 
 #endif

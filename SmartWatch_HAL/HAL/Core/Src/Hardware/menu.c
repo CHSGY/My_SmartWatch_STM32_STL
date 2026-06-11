@@ -142,7 +142,15 @@ uint8_t First_Page_Clock(void)
 			  *   原逻辑中的"切换开机"在实际硬件中不可实现（关机后MCU断电无法恢复）
 			  *   因此简化为：长按 → 关机
 			  */
-			POWER_Shutdown();	//关机
+			 //判断是否运行中
+			if(POWER_IsRunning())
+			{
+				POWER_Shutdown();	//关机
+			}
+			else
+			{
+				POWER_Boot();	//开机
+			}
 		}
 
 		/******Key Function Control******/
