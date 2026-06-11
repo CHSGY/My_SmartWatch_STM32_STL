@@ -1055,5 +1055,717 @@ TIM2 中断周期（参数不变）：
 ### 遗留待办
 
 - [x] 通过 CubeMX 配置 PLL 时钟，使系统时钟恢复 72MHz ✅
-- [ ] 配置完成后验证 TIM2 中断周期是否恢复为 1ms
-- [ ] 整体功能回归测试：菜单滑动、秒表计时、按键响应
+- [x] 配置完成后验证 TIM2 中断周期是否恢复为 1ms
+- [x] 整体功能回归测试：菜单滑动、秒表计时、按键响应
+
+---
+
+## 问题七：SetTime.c — 分钟设置函数使用错误的数组索引
+
+### 现象
+
+在设置页面选择"设置分钟"，UI 高亮了分钟行（显示"分:XX"），但按键操作实际修改的是**秒**的值，分钟值永远无法被修改。
+
+### 原因分析
+
+`Set_Min()` 函数内部调用 `ChangeRTC_Time()` 时使用了错误的数组索引：
+
+```c
+// SetTime.c Set_Min() — 当前代码（错误）
+int Set_Min(void)
+{
+    while(1)
+    {
+        KeyNum = Key_GetNum();
+        if(KeyNum == 1)     // Key1: add Min
+        {
+            ChangeRTC_Time(5, 1);   // ← 索引 5 = MyRTC_Time[5] = 秒！
+            ...
+        }
+        else if(KeyNum == 2)    // Key2: minus Min
+        {
+            ChangeRTC_Time(5, 0);   // ← 索引 5 = MyRTC_Time[5] = 秒！
+            ...
+        }
+        ...
+    }
+}
+```
+
+`MyRTC_Time` 数组索引定义：
+
+| 索引 | 含义 | 对应函数 |
+|------|------|---------|
+| 0 | 年 | `Set_Year()` |
+| 1 | 月 | `Set_Month()` |
+| 2 | 日 | `Set_Day()` |
+| 3 | 时 | `Set_Hour()` |
+| **4** | **分** | **`Set_Min()`** ← 应该操作此索引 |
+| 5 | 秒 | `Set_Sec()` |
+
+`Set_Min()` 应该使用索引 `4`（分），实际使用了索引 `5`（秒），导致 `Set_Min()` 和 `Set_Sec()` 都操作同一个 `MyRTC_Time[5]`。
+
+此外，`Set_Min()` 的 UI 高亮位置也与分钟 UI 不匹配——`Show_SetTime_UI()` 中分钟的 Y 坐标为 16（"分:XX"），但 `Set_Min()` 中 `OLED_ReverseArea(24, 32, 16, 16)` 反显的是 Y=32 的区域（秒的位置），这导致高亮光标出现在秒行而非分钟行。
+
+### 解决方案
+
+#### 1. 修正数组索引
+
+```c
+// SetTime.c Set_Min() — 修改后
+int Set_Min(void)
+{
+    while(1)
+    {
+        KeyNum = Key_GetNum();
+        if(KeyNum == 1)     // Key1: add Min
+        {
+            ChangeRTC_Time(4, 1);   // ← 修正：索引 4 = 分
+            if(MyRTC_Time[4] >= 60)
+            {
+                MyRTC_Time[4] = 0;
+                MyRTC_SetTime();
+            }
+        }
+        else if(KeyNum == 2)    // Key2: minus Min
+        {
+            ChangeRTC_Time(4, 0);   // ← 修正：索引 4 = 分
+            if(MyRTC_Time[4] < 0)
+            {
+                MyRTC_Time[4] = 59;
+                MyRTC_SetTime();
+            }
+        }
+        ...
+    }
+}
+```
+
+#### 2. 修正 UI 高亮位置
+
+```c
+// 修改前
+OLED_ReverseArea(24, 32, 16, 16);   // 反显 Y=32（秒行）
+
+// 修改后
+OLED_ReverseArea(24, 16, 16, 16);   // 反显 Y=16（分行）
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/SetTime.c` | `Set_Min()`：`ChangeRTC_Time` 索引从 `5` 改为 `4`，添加边界检查，修正 UI 高亮 Y 坐标 |
+
+---
+
+## 问题八：SetTime.c — Set_Hour() 小时边界值错误
+
+### 现象
+
+设置小时时，可以将小时值调到 **24**（屏幕显示"时:24"），这是无效的小时值。同时向下调小时时，最小值回绕到 24 而非 23。
+
+### 原因分析
+
+`Set_Hour()` 的上边界检查和下边界回绕值均有 off-by-one 错误：
+
+```c
+// SetTime.c Set_Hour() — 当前代码（错误）
+if(MyRTC_Time[3] >= 25)     // 允许 MyRTC_Time[3] = 24
+{
+    MyRTC_Time[3] = 0;
+}
+...
+if(MyRTC_Time[3] < 0)
+{
+    MyRTC_Time[3] = 24;     // 回绕值应为 23
+}
+```
+
+小时的有效范围是 0~23：
+- 上边界检查应为 `>= 24`（当值为 24 时回绕到 0），而非 `>= 25`
+- 下边界回绕值应为 `23`（最小值 -1 应回绕到最大值），而非 `24`
+
+### 解决方案
+
+```c
+// SetTime.c Set_Hour() — 修改后
+ChangeRTC_Time(3, 1);
+if(MyRTC_Time[3] >= 24)     // ← 修正：>= 24
+{
+    MyRTC_Time[3] = 0;
+    MyRTC_SetTime();
+}
+
+// ...
+
+ChangeRTC_Time(3, 0);
+if(MyRTC_Time[3] < 0)
+{
+    MyRTC_Time[3] = 23;     // ← 修正：回绕到 23
+    MyRTC_SetTime();
+}
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/SetTime.c` | `Set_Hour()`：上边界 `>= 25` → `>= 24`，下边界回绕 `24` → `23` |
+
+---
+
+## 问题九：menu.c — Battery_ShowUI() 先显示后边界限制导致低电量乱码
+
+### 现象
+
+当电池电压很低时（ADC 值 < 3276），电量百分比在屏幕上显示为乱码（一个巨大的无符号数字），而非 "0%"。
+
+### 原因分析
+
+`Battery_Show_UI()` 函数中，`OLED_ShowNum()` 在 `Battery_Capacity` 的边界检查**之前**被调用：
+
+```c
+// menu.c Battery_Show_UI() — 当前代码（错误顺序）
+Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100
+                 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
+
+OLED_ShowNum(82, 4, Battery_Capacity, 3, OLED_6X8);  // 先显示！
+OLED_ShowChar(100, 4, '%', OLED_6X8);
+
+if(Battery_Capacity < 0)     // 后检查！
+{
+    Battery_Capacity = 0;
+}
+```
+
+当 `AD_Value < 3276` 时，`Battery_Capacity`（`int8_t`，范围 -128~127）为负数。`OLED_ShowNum()` 的第三个参数类型是 `uint32_t`，负数被符号扩展为一个巨大的无符号数（如 -1 → 0xFFFFFFFF = 4294967295），导致 `OLED_ShowNum` 尝试显示一个超大数字，屏幕上出现乱码。
+
+**数据流示例（AD_Value = 3000）：**
+
+```
+Battery_Capacity = (3000 - 3276) * 100 / (4092 - 3276)
+                 = (-276) * 100 / 816
+                 = -33  (int8_t)
+
+OLED_ShowNum(82, 4, (uint32_t)(-33), 3, OLED_6X8)
+  → Number = 0xFFFFFFDF = 4294967263
+  → OLED 显示 "4294967263" → 屏幕乱码！
+```
+
+### 解决方案
+
+将边界检查移到显示之前：
+
+```c
+// menu.c Battery_Show_UI() — 修改后
+Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100
+                 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
+
+// 先做边界限制
+if(Battery_Capacity < 0)
+{
+    Battery_Capacity = 0;
+}
+if(Battery_Capacity >= 100)
+{
+    Battery_Capacity = 100;
+}
+
+// 再显示
+OLED_ShowNum(82, 4, Battery_Capacity, 3, OLED_6X8);
+OLED_ShowChar(100, 4, '%', OLED_6X8);
+```
+
+同时优化后续的电量图标绘制逻辑（原来在 `>= 100` 和 `>= 10` 分支中有冗余的 `OLED_ShowNum` 调用，修正边界后这些调用可以被统一）。
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | `Battery_Show_UI()`：边界检查移到 `OLED_ShowNum()` 之前 |
+
+---
+
+## 问题十：Key.c — Key_GetNum() 存在 ISR-主循环竞态条件
+
+### 现象
+
+偶尔按键无响应，按键事件似乎被"吞掉"了。问题在快速连续按键时更容易复现。
+
+### 原因分析
+
+`Key_Num` 是一个共享变量——在 TIM2 ISR 中由 `KeyTick()` 写入，在主循环中由 `Key_GetNum()` 读取并清零。`Key_GetNum()` 的读-改-写操作不是原子的：
+
+```c
+// Key.c Key_GetNum() — 当前代码（存在竞态窗口）
+uint8_t Key_GetNum(void)
+{
+    uint8_t Temp;
+    if(Key_Num)
+    {
+        Temp = Key_Num;
+        // ← ⚠️ 竞态窗口：如果 ISR 在此处触发并设置 Key_Num=3
+        Key_Num = 0;      // 新设置的按键值 3 被清零丢失！
+        return Temp;
+    }
+    else
+    {
+        return 0;
+    }
+}
+```
+
+**竞态时序：**
+
+```
+时间 →
+主循环:  Temp=Key_Num(=0)  │              │ Key_Num=0
+        ───────────────────┤              ├─────────────
+ISR:                       │ KeyTick()    │
+                           │ Key_Num = 3  │
+                           │              │
+结果: Key_Num 被 ISR 设为 3，然后被主循环清零 → 按键事件 3 丢失
+```
+
+在 Cortex-M3 上，`Key_Num` 是 `uint8_t`，其读写是单条 LDRB/STRB 指令，但整个 `if(Key_Num) { Temp=Key_Num; Key_Num=0; }` 序列不是原子的。
+
+### 解决方案
+
+在读取-清零操作期间短暂禁用中断：
+
+```c
+// Key.c Key_GetNum() — 修改后
+uint8_t Key_GetNum(void)
+{
+    uint8_t Temp;
+    __disable_irq();          // 临界区开始
+    if(Key_Num)
+    {
+        Temp = Key_Num;
+        Key_Num = 0;
+        __enable_irq();       // 临界区结束
+        return Temp;
+    }
+    __enable_irq();           // 临界区结束
+    return 0;
+}
+```
+
+> **注意：** `__disable_irq()` 会屏蔽所有中断（包括 TIM2 1ms 定时器），关中断时间极短（仅 2~3 条指令），不会影响系统实时性。
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/Key.c` | `Key_GetNum()`：添加 `__disable_irq()` / `__enable_irq()` 保护临界区 |
+
+---
+
+## 问题十一：dino.c — isColliding() 函数名与行为不符，阻塞延时冻结游戏循环
+
+### 现象
+
+游戏结束时屏幕冻结约 1 秒，期间所有按键无响应。从代码审查角度，`isColliding()` 的函数命名暗示纯查询操作，但实际内部有严重的副作用。
+
+### 原因分析
+
+`isColliding()` 函数违反了单一职责原则：
+
+```c
+// dino.c isColliding() — 当前代码
+uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
+{
+    if((a->minX < b->maxX) && ...)   // 碰撞检测（正确）
+    {
+        OLED_Clear();                        // 副作用 1: 清屏
+        OLED_ShowString(28,24,"Game Over",OLED_8X16);  // 副作用 2: 显示
+        OLED_Update();                       // 副作用 3: 刷新
+        delay_ms(1000);                      // 副作用 4: 阻塞 1 秒！
+        OLED_Clear();                        // 副作用 5: 清屏
+        OLED_Update();                       // 副作用 6: 刷新
+        return 1;
+    }
+    return 0;
+}
+```
+
+问题：
+1. **函数名误导：** 名为 `isColliding`（"是否碰撞"），但内部执行了 UI 渲染和延时
+2. **阻塞延时：** `delay_ms(1000)` 在游戏主循环中阻塞 1 秒，冻结所有游戏逻辑（障碍物移动、分数更新等）
+3. **`dino_tick()` 仍在 ISR 中运行：** 即使 `isColliding` 阻塞了主循环，TIM2 ISR 中的 `dino_tick()` 仍在更新分数和障碍物位置，导致 Game Over 后游戏状态在后台继续变化
+
+### 解决方案
+
+将碰撞检测和 Game Over 显示分离：
+
+```c
+// dino.c — 修改后
+
+// 纯碰撞检测函数（无副作用）
+uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
+{
+    return (a->minX < b->maxX) && (a->maxX > b->minX)
+        && (a->minY < b->maxY) && (a->maxY > b->minY);
+}
+
+// Game Over 显示函数（独立）
+void Show_GameOver(void)
+{
+    OLED_Clear();
+    OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+    OLED_Update();
+    delay_ms(1000);
+    OLED_Clear();
+    OLED_Update();
+}
+
+// Dino_game_Animation() 调用处修改
+uint8_t Dino_game_Animation(void)
+{
+    while(1)
+    {
+        OLED_Clear();
+        Show_Score();
+        Show_Ground();
+        Show_Barrier();
+        Show_Cloud();
+        Show_Dino();
+        OLED_Update();
+
+        if(isColliding(&Barr, &dino))
+        {
+            Show_GameOver();
+            return 0;
+        }
+    }
+}
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | 拆分 `isColliding()`：纯检测逻辑保留，Game Over 显示逻辑提取为独立函数 |
+| `SmartWatch_HAL/HAL/Core/Inc/Hardware/dino.h` | 新增 `Show_GameOver()` 声明（可选，如仅在 dino.c 内部使用可不暴露） |
+
+---
+
+## 问题十二：dino.c — 恐龙碰撞边界 maxX 计算错误
+
+### 现象
+
+目前无可见现象（因为 `DINO_X_POS = 0` 巧合正确），但如果未来调整恐龙 X 坐标，碰撞检测会出错。
+
+### 原因分析
+
+`Show_Dino()` 中恐龙的碰撞边界计算错误：
+
+```c
+// dino.c Show_Dino() — 当前代码
+dino.minX = DINO_X_POS;           // 0，正确
+dino.maxX = DINO_WIDTH;           // 16，错误！应为 DINO_X_POS + DINO_WIDTH
+dino.minY = DINO_GROUND_Y - Dino_JumpPos;
+dino.maxY = DINO_GROUND_Y_END - Dino_JumpPos;
+```
+
+因为 `DINO_X_POS = 0`，`DINO_WIDTH = 16`，`DINO_X_POS + DINO_WIDTH = 0 + 16 = 16`，与当前值巧合一致。但这是脆弱的——如果未来将恐龙移到屏幕中央（如 `DINO_X_POS = 10`），`dino.maxX = 16` 而实际应为 `26`，碰撞检测将提前误判。
+
+### 解决方案
+
+```c
+// dino.c Show_Dino() — 修改后
+dino.minX = DINO_X_POS;
+dino.maxX = DINO_X_POS + DINO_WIDTH;     // ← 修正
+dino.minY = DINO_GROUND_Y - Dino_JumpPos;
+dino.maxY = DINO_GROUND_Y_END - Dino_JumpPos;
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | `Show_Dino()`：`dino.maxX = DINO_WIDTH` → `DINO_X_POS + DINO_WIDTH` |
+
+---
+
+## 问题十三：dino.c — Dino_JumpCount 静态初始化为 1 而非 0
+
+### 现象
+
+目前无可见现象（`Game_Init()` 中会重置为 0），但静态初始值不正确，代码可读性差。
+
+### 原因分析
+
+```c
+// dino.c — 当前代码
+uint16_t Dino_JumpCount = 1;    // 应为 0
+```
+
+虽在 `Game_Init()` 中会被重置为 0：
+```c
+void Game_Init(void)
+{
+    Dino_Score = ... = Dino_JumpCount = 0;
+}
+```
+
+但如果任何代码路径跳过 `Game_Init()` 直接进入游戏，首次跳跃的 `sin()` 计算会偏差 1ms 的相位：
+
+```c
+Dino_JumpPos = DINO_JUMP_HEIGHT * sin((float)(Pi * Dino_JumpCount / DINO_JUMP_DURATION));
+// Dino_JumpCount=1 → sin(Pi*1/1000) ≈ sin(0.00314) ≈ 0.00314
+// 正确值应为 sin(0) = 0，恐龙应从地面开始跳跃
+```
+
+### 解决方案
+
+```c
+// dino.c — 修改后
+uint16_t Dino_JumpCount = 0;
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | `Dino_JumpCount` 初始值从 `1` 改为 `0` |
+
+---
+
+## 问题十四：OLED.c / MyI2C.c — 软件 I2C 无延时可导致通信不稳
+
+### 现象
+
+OLED 显示可能偶尔出现花屏或闪烁；MPU6050 数据读取可能偶尔出错。问题在特定温度或电压条件下更容易复现。
+
+### 原因分析
+
+软件模拟 I2C 在 SDA 建立和 SCL 翻转之间没有任何延时。代码中注释也提到需要延时但被省略：
+
+```c
+// OLED.c OLED_W_SCL() — 当前代码
+void OLED_W_SCL(uint8_t BitValue)
+{
+    HAL_GPIO_WritePin(OLED_SCL_GPIO_Port, OLED_SCL_Pin, (GPIO_PinState)BitValue);
+    /*如果芯片速度过快，可以在此处添加延时，以避免超过I2C通信的最高速度*/
+    //...   ← 延时被省略
+}
+```
+
+在 72MHz 主频下：
+- `HAL_GPIO_WritePin()` 执行时间约 50~100ns
+- 软件 I2C 的 SCL 频率可达 **数 MHz**
+- SSD1306 OLED 最大 I2C 频率：**400kHz**（快速模式）
+- MPU6050 最大 I2C 频率：**400kHz**
+
+**时序分析：**
+
+```
+标准 I2C (400kHz):
+SCL: ──┐     ┌──┐  ┌──     SCL 高电平 ≥ 0.6μs
+       │     │  │  │
+       └─────┘  └──┘
+SDA: ──────┐  ┌──────       SDA 在 SCL 低电平期间变化
+           │  │
+           └──┘
+            ↑
+        data setup ≥ 100ns
+
+72MHz 无延时软件 I2C:
+SCL: ──┐ ┌──┐ ┌──             SCL 高电平 ≈ 100ns（远小于 0.6μs）
+       │ │  │ │
+       └─┘  └─┘
+SDA: ────┐┌──────             SDA setup ≈ 0ns（违反时序）
+         ││
+         └┘
+```
+
+**影响范围：**
+
+| 外设 | I2C 引脚 | 驱动文件 | 风险 |
+|------|---------|---------|------|
+| OLED | PB8(SCL) / PB9(SDA) | `OLED.c` | 花屏、闪烁、偶尔不刷新 |
+| MPU6050 | PB10(SCL) / PB11(SDA) | `MyI2C.c`（通过 MPU6050.c 调用） | 数据读取错误、传感器初始化失败 |
+
+### 解决方案
+
+在 SCL 翻转和 SDA 变化之间添加微秒级延时。由于 `delay_us()` 每次调用都会开启/关闭 DWT（有开销），对于 I2C 时序中的短延时，使用简单的 NOP 循环更合适：
+
+```c
+// MyI2C.c — 添加 I2C 延时宏
+#define I2C_DELAY()  delay_us(2)   // 约 2μs，确保 SCL 周期 ≥ 5μs（200kHz）
+
+// MyI2C_SendByte() — 修改后
+void MyI2C_SendByte(...)
+{
+    uint8_t i;
+    for (i = 0; i < 8; i++)
+    {
+        MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, !!(Byte & (0x80 >> i)));
+        I2C_DELAY();                               // ← 添加：SDA 建立时间
+        MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);
+        I2C_DELAY();                               // ← 添加：SCL 高电平保持
+        MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);
+        I2C_DELAY();                               // ← 添加：SCL 低电平保持
+    }
+}
+```
+
+同样在 OLED 的 `OLED_I2C_SendByte()` 中也需要添加延时。但需注意：
+
+> ⚠️ **性能影响：** 添加 I2C 延时后，OLED 全屏刷新（1024 字节 × 约 26 次 GPIO 操作 × 每次加 2μs 延时）的耗时将从 ~3ms 增加到约 **~50ms**。这与菜单滑动动画优化（问题六）的目标存在矛盾，需要权衡。
+
+**推荐方案：仅在 MyI2C 模块统一添加延时**（OLED 的 I2C 函数是独立实现的，也需要同步修改）。可以将 I2C 延时作为可配置参数：
+
+```c
+// MyI2C.h — 添加延时配置宏
+#define MYI2C_DELAY_US          1       // I2C 半周期延时(μs)，1μs → ~500kHz
+
+// MyI2C.c
+static void MyI2C_Delay(void)
+{
+#if MYI2C_DELAY_US > 0
+    delay_us(MYI2C_DELAY_US);
+#endif
+}
+```
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/MyI2C.c` | 在 SCL/SDA 翻转之间添加 `delay_us()` 调用 |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/OLED.c` | `OLED_I2C_SendByte()` 中添加相同的延时 |
+
+### 备注
+
+- OLED 和 MPU6050 使用**不同的软件 I2C 实现**（OLED 内嵌在 `OLED.c`，MPU6050 使用 `MyI2C.c`），两处都需要修改
+- 如果未来改为硬件 I2C（STM32F103 有 2 个硬件 I2C 外设），此问题自动解决
+- 当前 72MHz 主频下，`delay_us(1)` 约 72 个 CPU 周期，实际延时约 1μs；`delay_us(2)` 约 2μs，SCL 频率约 250kHz，在 SSD1306 和 MPU6050 的规格范围内
+
+---
+
+## 问题十五：menu.c — 主循环每毫秒全屏重绘导致功耗过大
+
+### 现象
+
+手表电池耗电过快，待机时间明显短于预期。即使手表静止显示时钟页面（无用户操作），屏幕仍被反复刷新。
+
+### 原因分析
+
+`main()` 的主循环结构：
+
+```c
+// main.c — 当前代码
+while (1)
+{
+    OLED_Clear();
+    Battery_Show_UI();
+    OLED_Update();                          // 全屏 I2C 发送 1024 字节
+    ClockUI_Move_Flag = First_Page_Clock(); // 内部 __WFI()，被 TIM2 1ms 唤醒
+    if(ClockUI_Move_Flag == 1) { Menu_Page(); }
+    else if(ClockUI_Move_Flag == 2) { SettingPage(); }
+}
+```
+
+`First_Page_Clock()` 内部通过 `__WFI()` 等待中断，但 TIM2 每 **1ms** 触发一次中断。每次唤醒后：
+
+1. 回到 `while(1)` 开头
+2. `OLED_Clear()` — 清零 1024 字节显存
+3. `Battery_Show_UI()` — 绘制电池图标（大部分时间使用缓存值，开销小）
+4. `OLED_Update()` — **软件 I2C 发送 1024 字节 → ~3ms（72MHz 下）**
+5. 进入 `First_Page_Clock()` → `__WFI()` → 约 1ms 后被 TIM2 唤醒
+6. 重复步骤 2
+
+**功耗分析：**
+
+| 操作 | 频率 | 单次耗时 | 占空比 |
+|------|------|---------|--------|
+| OLED 全屏 I2C 刷新 | 1000 Hz | ~3 ms | **100%（持续工作）** |
+| CPU 唤醒 | 1000 Hz | — | 几乎 100% |
+
+屏幕被以 **1000 Hz**（每秒 1000 次）的速率全屏刷新，而人眼只需要 30~60 Hz。多余的 940+ 次刷新完全浪费电力。
+
+### 解决方案
+
+在主循环中添加帧率控制，仅在必要时刷新屏幕：
+
+```c
+// main.c — 修改后
+#define FRAME_PERIOD_MS     33      // 约 30 FPS
+
+while (1)
+{
+    static uint32_t last_frame_tick = 0;
+    uint32_t now = HAL_GetTick();
+
+    // 帧率控制：仅在到达下一帧时刻时才重绘
+    if(now - last_frame_tick >= FRAME_PERIOD_MS)
+    {
+        last_frame_tick = now;
+
+        OLED_Clear();
+        Battery_Show_UI();
+        OLED_Update();
+    }
+
+    ClockUI_Move_Flag = First_Page_Clock();
+    if(ClockUI_Move_Flag == 1) { Menu_Page(); }
+    else if(ClockUI_Move_Flag == 2) { SettingPage(); }
+}
+```
+
+> ⚠️ **注意：** 此方案有一个重要前提——`__WFI()` 的唤醒源必须改为非周期性唤醒。当前 `First_Page_Clock()` 等函数内部使用 `while(1) { ... __WFI(); }` 模式，被 TIM2 每 1ms 唤醒一次。要真正降低功耗，需要：
+>
+> 1. 将时钟页面改为**仅在按键中断时唤醒**（使用 EXTI 外部中断代替轮询），而非定时器周期性唤醒
+> 2. 或者将 TIM2 周期从 1ms 增加到 33ms（30Hz），但会影响按键扫描响应速度（KeyTick 也依赖 TIM2）
+>
+> **建议将此列为架构级改进，需要更全面的重新设计。**
+
+**折中方案（低风险）：**
+
+如果不想改动中断架构，可以简单降低主循环的刷新率：
+
+```c
+// First_Page_Clock() 内部，在 __WFI() 前添加
+// 将 TIM2 周期从 1ms 改为 10ms（降低 10 倍刷新率）
+// TIM2: Prescaler=719, Period=999 → 72MHz/720/1000 = 100Hz = 10ms
+```
+
+这样屏幕刷新率从 1000Hz 降到 100Hz，功耗显著降低，同时按键扫描间隔 10ms 仍可接受（人类按键反应时间 > 100ms）。
+
+### 涉及文件
+
+| 文件 | 修改内容 |
+|------|---------|
+| `SmartWatch_HAL/HAL/Core/Src/main.c` | 主循环添加帧率控制 |
+| `SmartWatch_HAL/HAL/Core/Src/main.c` | `MX_TIM2_Init()`：TIM2 Period 从 99 调整（可选，需权衡按键响应） |
+
+### 备注
+
+- 此问题与问题六（时钟频率恢复）有交互：恢复 72MHz 后 OLED 刷新更快，但每秒刷新次数不变，功耗问题反而更突出（CPU 更快完成工作后有更多空闲时间，但 `__WFI()` 仍被 1ms 周期唤醒）
+- 长期方案建议将按键检测改为 EXTI 中断 + 消抖定时器，主循环只在有事件时才唤醒刷新
+
+---
+
+## Bug 汇总
+
+| 编号 | 优先级 | 文件 | 问题 | 故障现象 |
+|------|--------|------|------|---------|
+| 问题七 | 🔴 P0 | `SetTime.c` | `Set_Min()` 使用错误的数组索引 `5`（秒）而非 `4`（分） | 分钟永远无法被修改 |
+| 问题八 | 🔴 P0 | `SetTime.c` | `Set_Hour()` 上边界 `>= 25` 应为 `>= 24`，回绕值 `24` 应为 `23` | 小时可设为无效值 24 |
+| 问题九 | 🟠 P1 | `menu.c` | `Battery_ShowUI()` 先显示后边界限制，负值传入 `uint32_t` | 低电量时屏幕显示乱码 |
+| 问题十 | 🟡 P2 | `Key.c` | `Key_GetNum()` 读-改-写非原子，存在 ISR 竞态 | 偶尔按键无响应 |
+| 问题十一 | 🟡 P2 | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
+| 问题十二 | 🟢 P3 | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
+| 问题十三 | 🟢 P3 | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
+| 问题十四 | 🟡 P2 | `OLED.c` / `MyI2C.c` | 软件 I2C 无延时，SCL 频率超限 | OLED 偶发花屏、MPU6050 读数偶发出错 |
+| 问题十五 | 🟡 P2 | `menu.c` | 主循环每 1ms 全屏刷新，屏幕以 1000Hz 无意义重绘 | 电池耗电过快 |
+
+### 修复建议优先级
+
+1. **立即修复（P0）：** 问题七 + 问题八 — 直接影响时间设置功能的正确性
+2. **尽快修复（P1）：** 问题九 — 低电量场景下用户看到的电量信息是错误的
+3. **计划修复（P2）：** 问题十、十一、十四、十五 — 影响可靠性、可维护性和功耗
+4. **低优先级（P3）：** 问题十二、十三 — 代码规范性改进，当前无可见影响

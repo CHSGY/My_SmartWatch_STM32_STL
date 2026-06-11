@@ -241,20 +241,20 @@ int Set_Min(void)
 		KeyNum = Key_GetNum();
 		if(KeyNum == 1)     //Key1£ºadd Min 
 		{
-            ChangeRTC_Time(5,1);
-            if(MyRTC_Time[5] >= 60)
+            ChangeRTC_Time(4,1);
+            if(MyRTC_Time[4] >= 60)
             {
-                MyRTC_Time[5] = 0;
+                MyRTC_Time[4] = 0;
 				MyRTC_SetTime();
             }
 		}
 		
 		else if(KeyNum == 2)    //Key2: minus Min
 		{
-			ChangeRTC_Time(5,0);
-			if(MyRTC_Time[5] < 0)
+			ChangeRTC_Time(4,0);
+			if(MyRTC_Time[4] < 0)
 			{
-				MyRTC_Time[5] = 59;
+				MyRTC_Time[4] = 59;
 				MyRTC_SetTime();
 			}
 		}
@@ -265,7 +265,7 @@ int Set_Min(void)
 		}
 
 		Show_SetTime_UI();
-		OLED_ReverseArea(24,32,16,16);
+		OLED_ReverseArea(24,16,16,16);
 		OLED_Update();
 
 	}
