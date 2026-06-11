@@ -5,8 +5,8 @@
   * @date           : 2026-06-08
   *
   * @note           : ´Ó±ê×¼¿âSetTime.cÒÆÖ²£¬Ö÷ÒªÐÞ¸Äµã£º
-  *                   1. Í·ÎÄ¼þ£ºstm32f10x.h ¡ú main.h
-  *                   2. Í·ÎÄ¼þÂ·¾¶£ºOLED.h/Key.h/menu.h ¡ú Hardware/Ç°×º
+  *                   1. Í·ÎÄ¼þ stm32f10x.h ¡ú main.h
+  *                   2. Í·ÎÄ¼þÂ·¾¶ OLED.h/Key.h/menu.h ¡ú Hardware/Ç°×º
   */
 
 #include "main.h"
@@ -61,15 +61,15 @@ void ChangeRTC_Time(uint8_t i,uint8_t flag)
 	{
 		MyRTC_Time[i]++;
 	}
-	MyRTC_SetTime(); 				//°Ñ¸üÐÂºóµÄÊ±¼äÖµ´Ó½á¹¹ÌåÊý×éÖÐË¢ÐÂµ½RTCÃë¶¨Ê±Æ÷Ó²¼þµçÂ·ÖÐ
+	MyRTC_SetTime(); 				//°Ñ¸üÐÂºóµÄÊ±¼äÖµ´Ó½á¹¹ÌåÖØÐÂË¢ÐÂµ½RTCÓ²¼þµçÂ·ÖÐ
 }
 
-static uint8_t KeyNum;             /* ÁÙÊ±°´¼ü¼üÂë±äÁ¿ */
+static uint8_t KeyNum;             /* ÔÝ´æ°´¼ü¼üÖµ */
 
 /**
   * @brief ÉèÖÃÄê·Ý
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼ÓÄê·Ý Key2¼õÉÙÄê·Ý Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼ÓÄê·Ý Key2¼õÄê·Ý Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Year(void)
 {
@@ -77,7 +77,7 @@ int Set_Year(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1) //Key1£ºadd Year 
+		if(KeyNum == 1) //Key1: add Year
 		{
 			ChangeRTC_Time(0,1);
 			KeyNum = 0;
@@ -103,7 +103,7 @@ int Set_Year(void)
 /**
   * @brief ÉèÖÃÔÂ·Ý
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼ÓÔÂ·Ý Key2¼õÉÙÔÂ·Ý Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼ÓÔÂ·Ý Key2¼õÔÂ·Ý Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Month(void)
 {
@@ -111,7 +111,7 @@ int Set_Month(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1£ºadd Month 
+		if(KeyNum == 1)         //Key1: add Month
 		{
 			ChangeRTC_Time(1,1);
 			if(MyRTC_Time[1] > 12)
@@ -146,7 +146,7 @@ int Set_Month(void)
 /**
   * @brief ÉèÖÃÈÕÆÚ
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼ÓÈÕÆÚ Key2¼õÉÙÈÕÆÚ Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼ÓÈÕÆÚ Key2¼õÈÕÆÚ Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Day(void)
 {
@@ -154,7 +154,7 @@ int Set_Day(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1£ºadd Day
+		if(KeyNum == 1)         //Key1: add Day
 		{
 			ChangeRTC_Time(2,1);
 			if(MyRTC_Time[2] >= 32)
@@ -188,7 +188,7 @@ int Set_Day(void)
 /**
   * @brief ÉèÖÃÐ¡Ê±
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼ÓÐ¡Ê± Key2¼õÉÙÐ¡Ê± Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼ÓÐ¡Ê± Key2¼õÐ¡Ê± Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Hour(void)
 {
@@ -196,10 +196,10 @@ int Set_Hour(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1£ºadd Hour 
+		if(KeyNum == 1)     //Key1: add Hour
 		{
             ChangeRTC_Time(3,1);
-            if(MyRTC_Time[3] >= 25)
+            if(MyRTC_Time[3] >= 24)
             {
                 MyRTC_Time[3] = 0;
 				MyRTC_SetTime();
@@ -210,7 +210,7 @@ int Set_Hour(void)
 			ChangeRTC_Time(3,0);
 			if(MyRTC_Time[3] < 0)
 			{
-				MyRTC_Time[3] = 24;
+				MyRTC_Time[3] = 23;
 				MyRTC_SetTime();
 			}
 		}
@@ -218,8 +218,8 @@ int Set_Hour(void)
 		{
 			return 0;
 		}
-		
-		/*ÎÞ°´¼ü²Ù×÷Ê±£¬ÏÔÊ¾Ê±¼äÉèÖÃÒ³Ãæ²¢¸ßÁÁ¶ÔÓ¦ÉèÖÃÏî*/
+
+		/*ÎÞ°´¼üÊäÈëÊ±ÏÔÊ¾Ê±¼äÉèÖÃÒ³Ãæ²¢µÈ´ý°´¼üÊäÈë*/
 		Show_SetTime_UI();
 		OLED_ReverseArea(24,0,16,16);
 		OLED_Update();
@@ -231,7 +231,7 @@ int Set_Hour(void)
 /**
   * @brief ÉèÖÃ·ÖÖÓ
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼Ó·ÖÖÓ Key2¼õÉÙ·ÖÖÓ Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼Ó·ÖÖÓ Key2¼õ·ÖÖÓ Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Min(void)
 {
@@ -239,7 +239,7 @@ int Set_Min(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1£ºadd Min 
+		if(KeyNum == 1)     //Key1: add Min
 		{
             ChangeRTC_Time(4,1);
             if(MyRTC_Time[4] >= 60)
@@ -248,7 +248,7 @@ int Set_Min(void)
 				MyRTC_SetTime();
             }
 		}
-		
+
 		else if(KeyNum == 2)    //Key2: minus Min
 		{
 			ChangeRTC_Time(4,0);
@@ -258,7 +258,7 @@ int Set_Min(void)
 				MyRTC_SetTime();
 			}
 		}
-		
+
 		else if(KeyNum == 3) //Key3: save and quit
 		{
 			return 0;
@@ -274,7 +274,7 @@ int Set_Min(void)
 /**
   * @brief ÉèÖÃÃëÖÓ
   * @retval 0-·µ»Ø
-  * @note  Key1Ôö¼ÓÃëÖÓ Key2¼õÉÙÃëÖÓ Key3È·ÈÏ²¢·µ»Ø
+  * @note  Key1¼ÓÃëÖÓ Key2¼õÃëÖÓ Key3È·ÈÏ²¢ÍË³ö
   */
 int Set_Sec(void)
 {
@@ -282,7 +282,7 @@ int Set_Sec(void)
 	{
 
 		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1£ºadd Sec 
+		if(KeyNum == 1)         //Key1: add Sec
 		{
             ChangeRTC_Time(5,1);
             if(MyRTC_Time[5] >= 60)
@@ -291,7 +291,7 @@ int Set_Sec(void)
 				MyRTC_SetTime();
             }
 		}
-		
+
 		else if(KeyNum == 2)        //Key2: minus Sec
 		{
 			ChangeRTC_Time(5,0);
@@ -301,7 +301,7 @@ int Set_Sec(void)
 				MyRTC_SetTime();
 			}
 		}
-		
+
 		else if(KeyNum == 3) //Key3: save and quit
 		{
 			return 0;
@@ -320,7 +320,7 @@ uint8_t Key_CursorFlag = 1;         /* ÈÕÆÚÊ±¼äÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-Äê 3-Ô
 /**
   * @brief ÈÕÆÚÊ±¼äÉèÖÃÖ÷Á÷³Ì
   * @retval 0-·µ»Ø
-  * @note  ¸ºÔðÈÕÆÚÊ±¼äÉèÖÃµÄÒ³ÃæÌø×ªºÍ¹¦ÄÜÑ¡Ôñ
+  * @note  ´¦ÀíÈÕÆÚÊ±¼äÉèÖÃµÄÒ³ÃæÌø×ªºÍ¹¦ÄÜÑ¡Ôñ
   */
 int SetTime_mainprocess(void)
 {
@@ -329,7 +329,7 @@ int SetTime_mainprocess(void)
 
 		KeyNum = Key_GetNum();
 		uint8_t Key_FuncFlag = 0;
-		if(KeyNum == 1)       //¹â±êµÝÔö
+		if(KeyNum == 1)       //ÉÏ·­¼ü
 		{
 			Key_CursorFlag++;
 			if(Key_CursorFlag > 7)
@@ -337,7 +337,7 @@ int SetTime_mainprocess(void)
 				Key_CursorFlag = 1;
 			}
 		}
-		else if(KeyNum == 2)  //¹â±êµÝ¼õ
+		else if(KeyNum == 2)  //ÏÂ·­¼ü
 		{
 			Key_CursorFlag--;
 			if(Key_CursorFlag <= 0)
@@ -345,14 +345,14 @@ int SetTime_mainprocess(void)
 				Key_CursorFlag = 7;
 			}
 		}
-		else if(KeyNum == 3)  //È·¶¨
+		else if(KeyNum == 3)  //È·ÈÏ
 		{
 			//OLED_Clear();
 			//OLED_Update();
 			Key_FuncFlag = Key_CursorFlag;
 		}
-		
-		/*******°´¼üÊ±¼äÈÕÆÚµ÷Õû¹¦ÄÜ´¥·¢*******/
+
+		/*******ÈÕÆÚÊ±¼äÉèÖÃÒ³ÃæÌø×ª¹¦ÄÜ´¦Àí*******/
 		if(Key_FuncFlag == 1)
 		{
 			Key_FuncFlag = 0;
@@ -365,8 +365,8 @@ int SetTime_mainprocess(void)
 		else if(Key_FuncFlag == 6){Set_Min();}
 		else if(Key_FuncFlag == 7){Set_Sec();}
 		else{;}
-		
-		/***********°´¼üÑ¡Ôñ¹â±êÎ»ÖÃ*********/
+
+		/***********¹â±êÑ¡ÔñµÄÎ»ÖÃ*********/
 		switch(Key_CursorFlag)
 		{
 			case 1:                     //[·µ»Ø]
@@ -409,7 +409,7 @@ int SetTime_mainprocess(void)
                 OLED_Clear();
 				Show_SetTime_UI();
 				OLED_ReverseArea(24,32,16,16);
-				OLED_Update(); 
+				OLED_Update();
 			    break;
             default:
                 break;
