@@ -1279,11 +1279,60 @@ OLED_ShowChar(100, 4, '%', OLED_6X8);
 
 同时优化后续的电量图标绘制逻辑（原来在 `>= 100` 和 `>= 10` 分支中有冗余的 `OLED_ShowNum` 调用，修正边界后这些调用可以被统一）。
 
+### 修复实施（2026-06-11）
+
+采用 Python 字节级替换方式修改（因为 `menu.c` 为 GBK 编码，中文注释的 GBK 字节序列无法通过普通文本编辑器精确匹配）。
+
+**修改内容：**
+
+```c
+// menu.c Battery_Show_UI() — 修改后
+Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100
+                 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
+
+// 先做边界限制（移到 OLED_ShowNum 之前）
+if(Battery_Capacity < 0)
+{
+    Battery_Capacity = 0;
+}
+
+if(Battery_Capacity >= 100)
+{
+    Battery_Capacity = 100;
+}
+
+// 再显示（此时 Battery_Capacity 已确保在 [0, 100] 范围内）
+OLED_ShowNum(82, 4, Battery_Capacity, 3, OLED_6X8);
+OLED_ShowChar(100, 4, '%', OLED_6X8);
+
+// 电量图标绘制（去掉冗余的 OLED_ShowNum 调用和冗余条件）
+if(Battery_Capacity >= 100)
+{
+    OLED_ShowImage(...);
+}
+else if(Battery_Capacity >= 10)  // 去掉 && Battery_Capacity < 100（已 clamp）
+{
+    ...
+}
+else  // 个位数电量不显示
+{
+    ...
+}
+```
+
+**修复要点：**
+
+| 修改项 | 修改前 | 修改后 |
+|--------|--------|--------|
+| 边界检查位置 | `OLED_ShowNum()` **之后** | `OLED_ShowNum()` **之前** |
+| `>= 100` 分支冗余 `OLED_ShowNum` | 有（重复调用） | 移除 |
+| `>= 10` 分支条件 | `>= 10 && < 100` | `>= 10`（上界已在前面 clamp） |
+
 ### 涉及文件
 
 | 文件 | 修改内容 |
 |------|---------|
-| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | `Battery_Show_UI()`：边界检查移到 `OLED_ShowNum()` 之前 |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | `Battery_Show_UI()`：边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码 |
 
 ---
 
@@ -1755,7 +1804,7 @@ while (1)
 |------|--------|------|------|---------|
 | 问题七 | 🔴 P0 ✅ | `SetTime.c` | `Set_Min()` 使用错误的数组索引 `5`（秒）而非 `4`（分） | 分钟永远无法被修改 |
 | 问题八 | 🔴 P0 ✅ | `SetTime.c` | `Set_Hour()` 上边界 `>= 25` 应为 `>= 24`，回绕值 `24` 应为 `23` | 小时可设为无效值 24 |
-| 问题九 | 🟠 P1 | `menu.c` | `Battery_ShowUI()` 先显示后边界限制，负值传入 `uint32_t` | 低电量时屏幕显示乱码 |
+| 问题九 | 🟠 P1 ✅ | `menu.c` | `Battery_ShowUI()` 先显示后边界限制，负值传入 `uint32_t` | 低电量时屏幕显示乱码 |
 | 问题十 | 🟡 P2 | `Key.c` | `Key_GetNum()` 读-改-写非原子，存在 ISR 竞态 | 偶尔按键无响应 |
 | 问题十一 | 🟡 P2 | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
 | 问题十二 | 🟢 P3 | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
@@ -1766,7 +1815,6 @@ while (1)
 ### 修复建议优先级
 
 1. ~~**立即修复（P0）：** 问题七 + 问题八~~ ✅ 已修复 — `Set_Min()` 索引修正为4，`Set_Hour()` 边界修正为 `>= 24` / 回绕 `23`
-2. **尽快修复（P1）：** 问题九 — 低电量场景下用户看到的电量信息是错误的
-2. **尽快修复（P1）：** 问题九 — 低电量场景下用户看到的电量信息是错误的
+2. ~~**尽快修复（P1）：** 问题九~~ ✅ 已修复 — 边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码
 3. **计划修复（P2）：** 问题十、十一、十四、十五 — 影响可靠性、可维护性和功耗
 4. **低优先级（P3）：** 问题十二、十三 — 代码规范性改进，当前无可见影响

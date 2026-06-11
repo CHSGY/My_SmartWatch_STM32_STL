@@ -60,9 +60,6 @@ void Battery_Show_UI(void)
 
 	Battery_Capacity = (AD_Value - BATTERY_ADC_EMPTY) * 100 / (BATTERY_ADC_MAX - BATTERY_ADC_EMPTY);
 
-	OLED_ShowNum(82,4,Battery_Capacity,3,OLED_6X8);
-	OLED_ShowChar(100,4,'%',OLED_6X8);
-
 	if(Battery_Capacity < 0)
 	{
 		Battery_Capacity = 0;
@@ -71,20 +68,26 @@ void Battery_Show_UI(void)
 	if(Battery_Capacity >= 100)
 	{
 		Battery_Capacity = 100;
-		OLED_ShowNum(82,4,Battery_Capacity,3,OLED_6X8);
+	}
+
+	OLED_ShowNum(82,4,Battery_Capacity,3,OLED_6X8);
+	OLED_ShowChar(100,4,'%',OLED_6X8);
+
+	if(Battery_Capacity >= 100)
+	{
 		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
 	}
-	else if(Battery_Capacity >= 10 && Battery_Capacity < 100)
+	else if(Battery_Capacity >= 10)
 	{
 		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
 		OLED_ClearArea(BATTERY_BAR_X + Battery_Capacity/10, BATTERY_BAR_Y, BATTERY_BAR_W - Battery_Capacity/10, BATTERY_BAR_H);
 		OLED_ClearArea(82,4,6,8);
 	}
-	else	//个位数字电量显示
+	else	//个位数电量不显示
 	{
 		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
-		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//电池电量UI清除
-		OLED_ClearArea(82,4,12,8);			//百位十位电量显示清除
+		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//电池电量UI清空
+		OLED_ClearArea(82,4,12,8);			//个位十位数不显示区域
 	}
 }
 
