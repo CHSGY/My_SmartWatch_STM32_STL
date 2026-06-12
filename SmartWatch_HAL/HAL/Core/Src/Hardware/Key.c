@@ -115,16 +115,16 @@ uint8_t Key_GetNum(void)
 {
   /* USER CODE BEGIN Key_GetNum */
   uint8_t Temp;
+  __disable_irq();          /* 临界区开始：保护 Key_Num 读-改-写原子性 */
   if(Key_Num)
   {
     Temp = Key_Num;
-    Key_Num = 0;  /* 清空按键值，防止重复识别 */
+    Key_Num = 0;            /* 清空按键值，防止重复识别 */
+    __enable_irq();         /* 临界区结束 */
     return Temp;
   }
-  else
-  {
-    return 0;
-  }
+  __enable_irq();           /* 临界区结束 */
+  return 0;
   /* USER CODE END Key_GetNum */
 }
 

@@ -1409,6 +1409,37 @@ uint8_t Key_GetNum(void)
 |------|---------|
 | `SmartWatch_HAL/HAL/Core/Src/Hardware/Key.c` | `Key_GetNum()`：添加 `__disable_irq()` / `__enable_irq()` 保护临界区 |
 
+### 修复实施（2026-06-12）
+
+**修改内容：**
+
+```c
+// Key.c Key_GetNum() — 修改后
+uint8_t Key_GetNum(void)
+{
+    uint8_t Temp;
+    __disable_irq();          /* 临界区开始：保护 Key_Num 读-改-写原子性 */
+    if(Key_Num)
+    {
+        Temp = Key_Num;
+        Key_Num = 0;          /* 清空按键值，防止重复识别 */
+        __enable_irq();       /* 临界区结束 */
+        return Temp;
+    }
+    __enable_irq();           /* 临界区结束 */
+    return 0;
+}
+```
+
+**修复要点：**
+
+| 修改项 | 修改前 | 修改后 |
+|--------|--------|--------|
+| 临界区保护 | 无，`Key_Num` 的读-改-写可被 ISR 打断 | `__disable_irq()` / `__enable_irq()` 包裹临界区 |
+| 关中断时长 | N/A | 仅 2~3 条指令（LDRB + STRB），不影响 TIM2 1ms 定时器精度 |
+
+> **验证方法：** 在 Cortex-M3 上 `uint8_t` 的读写是单条 LDRB/STRB 指令，但 `if(Key_Num) { Temp=Key_Num; Key_Num=0; }` 序列不是原子的。添加 `__disable_irq()` 后，ISR 无法在 `Temp=Key_Num` 和 `Key_Num=0` 之间插入，确保按键事件不会丢失。
+
 ---
 
 ## 问题十一：dino.c — isColliding() 函数名与行为不符，阻塞延时冻结游戏循环
@@ -1805,7 +1836,7 @@ while (1)
 | 问题七 | 🔴 P0 ✅ | `SetTime.c` | `Set_Min()` 使用错误的数组索引 `5`（秒）而非 `4`（分） | 分钟永远无法被修改 |
 | 问题八 | 🔴 P0 ✅ | `SetTime.c` | `Set_Hour()` 上边界 `>= 25` 应为 `>= 24`，回绕值 `24` 应为 `23` | 小时可设为无效值 24 |
 | 问题九 | 🟠 P1 ✅ | `menu.c` | `Battery_ShowUI()` 先显示后边界限制，负值传入 `uint32_t` | 低电量时屏幕显示乱码 |
-| 问题十 | 🟡 P2 | `Key.c` | `Key_GetNum()` 读-改-写非原子，存在 ISR 竞态 | 偶尔按键无响应 |
+| 问题十 | 🟡 P2 ✅ | `Key.c` | `Key_GetNum()` 读-改-写非原子，存在 ISR 竞态 | 偶尔按键无响应 |
 | 问题十一 | 🟡 P2 | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
 | 问题十二 | 🟢 P3 | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
 | 问题十三 | 🟢 P3 | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
@@ -1816,5 +1847,6 @@ while (1)
 
 1. ~~**立即修复（P0）：** 问题七 + 问题八~~ ✅ 已修复 — `Set_Min()` 索引修正为4，`Set_Hour()` 边界修正为 `>= 24` / 回绕 `23`
 2. ~~**尽快修复（P1）：** 问题九~~ ✅ 已修复 — 边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码
-3. **计划修复（P2）：** 问题十、十一、十四、十五 — 影响可靠性、可维护性和功耗
+3. **计划修复（P2）：** 问题十一、十四、十五 — 影响可靠性、可维护性和功耗
+   - ~~问题十~~ ✅ 已修复 — `Key_GetNum()` 添加 `__disable_irq()` / `__enable_irq()` 临界区保护
 4. **低优先级（P3）：** 问题十二、十三 — 代码规范性改进，当前无可见影响
