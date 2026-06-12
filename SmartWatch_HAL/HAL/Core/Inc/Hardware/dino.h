@@ -96,4 +96,10 @@ void Show_Dino(void);
   */
 uint8_t Dino_game_Animation(void);
 
+/**
+  * @brief 显示游戏结束画面
+  * @param  无
+  * @retval 无
+  */
+void Show_GameOver(void);
 #endif

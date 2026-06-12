@@ -1527,7 +1527,88 @@ uint8_t Dino_game_Animation(void)
 | 文件 | 修改内容 |
 |------|---------|
 | `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | 拆分 `isColliding()`：纯检测逻辑保留，Game Over 显示逻辑提取为独立函数 |
-| `SmartWatch_HAL/HAL/Core/Inc/Hardware/dino.h` | 新增 `Show_GameOver()` 声明（可选，如仅在 dino.c 内部使用可不暴露） |
+| `SmartWatch_HAL/HAL/Core/Inc/Hardware/dino.h` | 新增 `Show_GameOver()` 声明 |
+
+### 修复实施（2026-06-12）
+
+与问题十二、问题十三一并修复。
+
+**修改内容：**
+
+#### 1. `isColliding()` — 重构为纯碰撞检测函数
+
+```c
+// dino.c isColliding() — 修改后（纯查询，无副作用）
+uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
+{
+    return (a->minX < b->maxX) && (a->maxX > b->minX)
+        && (a->minY < b->maxY) && (a->maxY > b->minY);
+}
+```
+
+#### 2. 新增 `Show_GameOver()` — 独立 Game Over 显示函数
+
+```c
+// dino.c — 新增函数（从原 isColliding() 中提取）
+void Show_GameOver(void)
+{
+    OLED_Clear();
+    OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+    OLED_Update();
+    delay_ms(1000);
+    OLED_Clear();
+    OLED_Update();
+}
+```
+
+#### 3. `Dino_game_Animation()` — 简化调用站点
+
+```c
+// 修改前：使用 return_flag 中间变量
+uint8_t return_flag = 0;
+...
+return_flag = isColliding(&Barr,&dino);
+if(return_flag == 1) { return 0; }
+
+// 修改后：直接调用，语义清晰
+if(isColliding(&Barr, &dino))
+{
+    Show_GameOver();
+    return 0;
+}
+```
+
+#### 4. 问题十二连带修复 — `dino.maxX` 修正
+
+```c
+// 修改前
+dino.maxX = DINO_WIDTH;
+
+// 修改后
+dino.maxX = DINO_X_POS + DINO_WIDTH;
+```
+
+#### 5. 问题十三连带修复 — `Dino_JumpCount` 初始值修正
+
+```c
+// 修改前
+uint16_t Dino_JumpCount = 1;
+
+// 修改后
+uint16_t Dino_JumpCount = 0;
+```
+
+**修复要点：**
+
+| 修改项 | 修改前 | 修改后 |
+|--------|--------|--------|
+| `isColliding()` 职责 | 碰撞检测 + UI 渲染 + 阻塞延时（6 个副作用） | 纯碰撞检测（0 个副作用） |
+| Game Over 显示 | 耦合在 `isColliding()` 内部 | 独立 `Show_GameOver()` 函数 |
+| 调用站点 | `return_flag` 中间变量 | 直接 `if(isColliding(...))` |
+| `dino.maxX` | `DINO_WIDTH`（巧合正确） | `DINO_X_POS + DINO_WIDTH`（语义正确） |
+| `Dino_JumpCount` | 初始值 `1` | 初始值 `0` |
+
+> **注意：** 由于 `dino.c` 为 GBK 编码，使用 Python 字节级替换方式修改，避免编码破坏。`dino.h` 保持 UTF-8 编码（仅注释含中文，无字符串字面量）。
 
 ---
 
@@ -1566,6 +1647,10 @@ dino.maxY = DINO_GROUND_Y_END - Dino_JumpPos;
 | 文件 | 修改内容 |
 |------|---------|
 | `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | `Show_Dino()`：`dino.maxX = DINO_WIDTH` → `DINO_X_POS + DINO_WIDTH` |
+
+### 修复实施（2026-06-12）
+
+随问题十一一并修复，详见问题十一修复实施章节。
 
 ---
 
@@ -1610,6 +1695,10 @@ uint16_t Dino_JumpCount = 0;
 | 文件 | 修改内容 |
 |------|---------|
 | `SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c` | `Dino_JumpCount` 初始值从 `1` 改为 `0` |
+
+### 修复实施（2026-06-12）
+
+随问题十一一并修复，详见问题十一修复实施章节。
 
 ---
 
@@ -1837,9 +1926,9 @@ while (1)
 | 问题八 | 🔴 P0 ✅ | `SetTime.c` | `Set_Hour()` 上边界 `>= 25` 应为 `>= 24`，回绕值 `24` 应为 `23` | 小时可设为无效值 24 |
 | 问题九 | 🟠 P1 ✅ | `menu.c` | `Battery_ShowUI()` 先显示后边界限制，负值传入 `uint32_t` | 低电量时屏幕显示乱码 |
 | 问题十 | 🟡 P2 ✅ | `Key.c` | `Key_GetNum()` 读-改-写非原子，存在 ISR 竞态 | 偶尔按键无响应 |
-| 问题十一 | 🟡 P2 | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
-| 问题十二 | 🟢 P3 | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
-| 问题十三 | 🟢 P3 | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
+| 问题十一 | 🟡 P2 ✅ | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
+| 问题十二 | 🟢 P3 ✅ | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
+| 问题十三 | 🟢 P3 ✅ | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
 | 问题十四 | 🟡 P2 | `OLED.c` / `MyI2C.c` | 软件 I2C 无延时，SCL 频率超限 | OLED 偶发花屏、MPU6050 读数偶发出错 |
 | 问题十五 | 🟡 P2 | `menu.c` | 主循环每 1ms 全屏刷新，屏幕以 1000Hz 无意义重绘 | 电池耗电过快 |
 
@@ -1847,6 +1936,7 @@ while (1)
 
 1. ~~**立即修复（P0）：** 问题七 + 问题八~~ ✅ 已修复 — `Set_Min()` 索引修正为4，`Set_Hour()` 边界修正为 `>= 24` / 回绕 `23`
 2. ~~**尽快修复（P1）：** 问题九~~ ✅ 已修复 — 边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码
-3. **计划修复（P2）：** 问题十一、十四、十五 — 影响可靠性、可维护性和功耗
+3. **计划修复（P2）：** 问题十四、十五 — 影响可靠性和功耗
    - ~~问题十~~ ✅ 已修复 — `Key_GetNum()` 添加 `__disable_irq()` / `__enable_irq()` 临界区保护
-4. **低优先级（P3）：** 问题十二、十三 — 代码规范性改进，当前无可见影响
+   - ~~问题十一~~ ✅ 已修复 — `isColliding()` 拆分为纯检测函数 + `Show_GameOver()`，连带修复问题十二、十三
+4. **低优先级（P3）：** ~~问题十二、十三~~ ✅ 已修复 — 随问题十一一并修正

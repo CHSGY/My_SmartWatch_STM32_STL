@@ -35,7 +35,7 @@ uint8_t Dino_CloudCount;                /* 云朵移动计数 */
 
 uint8_t Dino_JumpFlag;                  /* 跳跃标志：1-跳跃中 0-地面 */
 uint8_t Dino_JumpPos;                   /* 当前跳跃高度 */
-uint16_t Dino_JumpCount = 1;            /* 跳跃计时计数 */
+uint16_t Dino_JumpCount = 0;            /* 跳跃计时计数 */
 
 /**
   * @brief 游戏对象边界结构体
@@ -170,32 +170,37 @@ void Show_Dino(void)
 
     /*小恐龙边界值*/
     dino.minX = DINO_X_POS;
-    dino.maxX = DINO_WIDTH;
+    dino.maxX = DINO_X_POS + DINO_WIDTH;
     dino.minY = DINO_GROUND_Y - Dino_JumpPos;
     dino.maxY = DINO_GROUND_Y_END - Dino_JumpPos;
 }
 
 /**
-  * @brief 碰撞检测函数
-  * @param  a  对象A边界（障碍物）
-  * @param  b  对象B边界（小恐龙）
+  * @brief 碰撞检测函数（纯查询，无副作用）
+  * @param  a  物体A边界（障碍物）
+  * @param  b  物体B边界（小恐龙）
   * @retval 0-未碰撞 1-碰撞
   */
 uint8_t isColliding(struct Object_Position* a, struct Object_Position* b)
 {
-    if((a->minX < b->maxX) && (a->maxX > b->minX) && (a->minY < b->maxY) && (a->maxY > b->minY) )
-    {
-        OLED_Clear();
-        OLED_ShowString(28,24,"Game Over",OLED_8X16);
-        OLED_Update();
-        delay_ms(1000);
-        OLED_Clear();
-        OLED_Update();
+    return (a->minX < b->maxX) && (a->maxX > b->minX)
+        && (a->minY < b->maxY) && (a->maxY > b->minY);
+}
 
-        return 1;
-    }
-
-    return 0;
+/**
+  * @brief 显示游戏结束画面
+  * @param  无
+  * @retval 无
+  * @note   从原 isColliding() 中提取，分离关注点
+  */
+void Show_GameOver(void)
+{
+    OLED_Clear();
+    OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+    OLED_Update();
+    delay_ms(1000);
+    OLED_Clear();
+    OLED_Update();
 }
 
 /**
@@ -262,7 +267,6 @@ void dino_tick(void)
   */
 uint8_t Dino_game_Animation(void)
 {
-    uint8_t return_flag = 0;
     while(1)
     {
 
@@ -274,11 +278,9 @@ uint8_t Dino_game_Animation(void)
         Show_Dino();
         OLED_Update();
 
-        return_flag = isColliding(&Barr,&dino);
-        
-        /*游戏结束退回到上一级*/
-        if(return_flag  == 1)
+        if(isColliding(&Barr, &dino))
         {
+            Show_GameOver();
             return 0;
         }
     }
