@@ -65,9 +65,13 @@ void MyI2C_Start(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
                  GPIO_TypeDef *SDA_GPIOx, uint16_t SDA_Pin)
 {
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, 1);		/* 释放SDA，确保SDA为高电平 */
+	delay_us(1);								/* SDA建立时间 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);		/* 释放SCL，确保SCL为高电平 */
+	delay_us(2);								/* SCL高电平保持（≥0.6us） */
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, 0);		/* 在SCL高电平期间，拉低SDA，产生起始信号 */
+	delay_us(2);								/* 起始条件保持 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);		/* 起始后把SCL也拉低，即为了占用总线，也为了方便总线时序的拼接 */
+	delay_us(1);								/* 总线稳定 */
 }
 
 /**
@@ -79,8 +83,11 @@ void MyI2C_Stop(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
                 GPIO_TypeDef *SDA_GPIOx, uint16_t SDA_Pin)
 {
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, 0);		/* 拉低SDA，确保SDA为低电平 */
+	delay_us(1);								/* SDA建立时间 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);		/* 释放SCL，使SCL呈现高电平 */
+	delay_us(2);								/* SCL高电平保持（≥0.6us） */
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, 1);		/* 在SCL高电平期间，释放SDA，产生终止信号 */
+	delay_us(2);								/* 终止条件保持 */
 }
 
 /**
@@ -99,8 +106,11 @@ void MyI2C_SendByte(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
 	{
 		/* 两个!的作用是，让所有非零的值变为1 */
 		MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, !!(Byte & (0x80 >> i)));
+		delay_us(1);								/* SDA建立时间（≥100ns） */
 		MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);	/* 释放SCL，从机在SCL高电平期间读取SDA */
+		delay_us(2);								/* SCL高电平保持（≥0.6us） */
 		MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);	/* 拉低SCL，主机开始发送下一位数据 */
+		delay_us(1);								/* SCL低电平保持 + 下一bit SDA建立 */
 	}
 }
 
@@ -118,8 +128,10 @@ uint8_t MyI2C_ReceiveByte(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
 	for (i = 0; i < 8; i++)
 	{
 		MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);	/* 释放SCL，主机在SCL高电平期间读取SDA */
+		delay_us(2);								/* SCL高电平保持（≥0.6us） */
 		if (MyI2C_R_SDA(SDA_GPIOx, SDA_Pin)) {Byte |= (0x80 >> i);}
 		MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);	/* 拉低SCL，从机在SCL低电平期间写入SDA */
+		delay_us(1);								/* SCL低电平保持 */
 	}
 	return Byte;
 }
@@ -135,8 +147,11 @@ void MyI2C_SendAck(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
                    uint8_t AckBit)
 {
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, AckBit);	/* 主机把应答位数据放到SDA线 */
+	delay_us(1);								/* SDA建立时间 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);		/* 释放SCL，从机在SCL高电平期间，读取应答位 */
+	delay_us(2);								/* SCL高电平保持（≥0.6us） */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);		/* 拉低SCL，开始下一个时序模块 */
+	delay_us(1);								/* SCL低电平保持 */
 }
 
 /**
@@ -150,9 +165,12 @@ uint8_t MyI2C_ReceiveAck(GPIO_TypeDef *SCL_GPIOx, uint16_t SCL_Pin,
 {
 	uint8_t AckBit;
 	MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, 1);		/* 接收前，主机先确保释放SDA，避免干扰从机的数据发送 */
+	delay_us(1);								/* SDA释放稳定 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);		/* 释放SCL，主机在SCL高电平期间读取SDA */
+	delay_us(2);								/* SCL高电平保持（≥0.6us） */
 	AckBit = MyI2C_R_SDA(SDA_GPIOx, SDA_Pin);	/* 将应答位存储到变量里 */
 	MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);		/* 拉低SCL，开始下一个时序模块 */
+	delay_us(1);								/* SCL低电平保持 */
 	return AckBit;
 }
 

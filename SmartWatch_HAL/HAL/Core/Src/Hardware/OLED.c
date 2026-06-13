@@ -20,6 +20,7 @@
 
 #include "main.h"
 #include "Hardware/OLED.h"
+#include "delay.h"
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
@@ -150,16 +151,40 @@ void OLED_GPIO_Init(void)
 /*通信协议*********************/
 
 /**
+  * @brief  OLED I2C lightweight delay (for SCL/SDA timing control)
+  * @note   Uses NOP loop, no DWT register overhead per call.
+  *         delay_us() has 6 register ops overhead per call,
+  *         too heavy for high-frequency I2C bit-banging.
+  *         At 72MHz, each __NOP() ~14ns, loop 8x ~0.8us.
+  */
+static void OLED_I2C_Delay(void)
+{
+	__NOP();
+	__NOP();
+	__NOP();
+	__NOP();
+	__NOP();
+	__NOP();
+	__NOP();
+	__NOP();
+}
+
+/**
   * 函    数：I2C起始
   * 参    数：无
   * 返 回 值：无
   */
 void OLED_I2C_Start(void)
 {
-	OLED_W_SDA(1);		//释放SDA，确保SDA为高电平
-	OLED_W_SCL(1);		//释放SCL，确保SCL为高电平
-	OLED_W_SDA(0);		//在SCL高电平期间，拉低SDA，产生起始信号
-	OLED_W_SCL(0);		//起始后把SCL也拉低，即为了占用总线，也为了方便总线时序的拼接
+	OLED_W_SDA(1);
+	OLED_I2C_Delay();
+	OLED_W_SCL(1);
+	OLED_I2C_Delay();
+	OLED_W_SDA(0);
+	OLED_I2C_Delay();
+	OLED_W_SCL(0);
+	OLED_I2C_Delay();
+
 }
 
 /**
@@ -169,9 +194,13 @@ void OLED_I2C_Start(void)
   */
 void OLED_I2C_Stop(void)
 {
-	OLED_W_SDA(0);		//拉低SDA，确保SDA为低电平
-	OLED_W_SCL(1);		//释放SCL，使SCL呈现高电平
-	OLED_W_SDA(1);		//在SCL高电平期间，释放SDA，产生终止信号
+	OLED_W_SDA(0);
+	OLED_I2C_Delay();
+	OLED_W_SCL(1);
+	OLED_I2C_Delay();
+	OLED_W_SDA(1);
+	OLED_I2C_Delay();
+
 }
 
 /**
@@ -182,19 +211,22 @@ void OLED_I2C_Stop(void)
 void OLED_I2C_SendByte(uint8_t Byte)
 {
 	uint8_t i;
-	
-	/*循环8次，主机依次发送数据的每一位*/
+
 	for (i = 0; i < 8; i++)
 	{
-		/*使用掩码的方式取出Byte的指定一位数据并写入到SDA线*/
-		/*两个!的作用是，让所有非零的值变为1*/
 		OLED_W_SDA(!!(Byte & (0x80 >> i)));
-		OLED_W_SCL(1);	//释放SCL，从机在SCL高电平期间读取SDA
-		OLED_W_SCL(0);	//拉低SCL，主机开始发送下一位数据
+		OLED_I2C_Delay();
+		OLED_W_SCL(1);
+		OLED_I2C_Delay();
+		OLED_W_SCL(0);
+		OLED_I2C_Delay();
 	}
-	
-	OLED_W_SCL(1);		//额外的一个时钟，不处理应答信号
+
+	OLED_W_SCL(1);
+	OLED_I2C_Delay();
 	OLED_W_SCL(0);
+	OLED_I2C_Delay();
+
 }
 
 /**

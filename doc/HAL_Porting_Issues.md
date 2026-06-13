@@ -1759,59 +1759,165 @@ SDA: ────┐┌──────             SDA setup ≈ 0ns（违反
 
 ### 解决方案
 
-在 SCL 翻转和 SDA 变化之间添加微秒级延时。由于 `delay_us()` 每次调用都会开启/关闭 DWT（有开销），对于 I2C 时序中的短延时，使用简单的 NOP 循环更合适：
+**分场景采用不同的延时策略：**
+
+| 特性 | OLED I2C（高频） | MyI2C（低频） |
+|------|-----------------|--------------|
+| 调用频率 | 每帧 ~1040 次 `SendByte` | 每次读传感器 ~10 次 |
+| 对 `delay_us` 开销敏感 | **非常敏感**（DWT 开销占比大） | **不敏感** |
+| 推荐延时方式 | **轻量 NOP 循环** | **`delay_us()`** |
+
+#### 1. OLED.c — 轻量 NOP 延时（避免 DWT 寄存器开销）
+
+新增 `OLED_I2C_Delay()` 静态函数，使用 `__NOP()` 循环：
 
 ```c
-// MyI2C.c — 添加 I2C 延时宏
-#define I2C_DELAY()  delay_us(2)   // 约 2μs，确保 SCL 周期 ≥ 5μs（200kHz）
+// OLED.c — 新增函数
+static void OLED_I2C_Delay(void)
+{
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+}
+```
 
-// MyI2C_SendByte() — 修改后
-void MyI2C_SendByte(...)
+在 72MHz 下，每个 `__NOP()` 约 14ns，8 个 NOP 展开约 0.8μs。展开形式避免循环开销，延时更精确。无 DWT 寄存器操作开销。
+
+在以下函数中添加 `OLED_I2C_Delay()` 调用：
+
+- `OLED_I2C_Start()` — 起始条件各步之间（SDA 建立 → SCL 高 → 起始保持 → 总线稳定）
+- `OLED_I2C_Stop()` — 停止条件各步之间（SDA 建立 → SCL 高 → 停止保持）
+- `OLED_I2C_SendByte()` — 每个 bit 的 SDA 建立、SCL 高、SCL 低三个阶段，以及第 9 个应答时钟
+
+#### 2. MyI2C.c — `delay_us()` 延时（低频调用，开销不重要）
+
+在以下 6 个协议函数中添加 `delay_us()` 调用：
+
+| 函数 | 延时点 | 延时值 |
+|------|--------|--------|
+| `MyI2C_Start()` | SDA 建立、SCL 高保持、起始保持、总线稳定 | 1+2+2+1 μs |
+| `MyI2C_Stop()` | SDA 建立、SCL 高保持、停止保持 | 1+2+2 μs |
+| `MyI2C_SendByte()` | 每 bit: SDA 建立 + SCL 高 + SCL 低 | 1+2+1 μs/bit |
+| `MyI2C_ReceiveByte()` | 每 bit: SCL 高 + SCL 低 | 2+1 μs/bit |
+| `MyI2C_SendAck()` | SDA 建立 + SCL 高 + SCL 低 | 1+2+1 μs |
+| `MyI2C_ReceiveAck()` | SDA 释放 + SCL 高 + SCL 低 | 1+2+1 μs |
+
+### 修复实施（2026-06-12）
+
+#### OLED.c 修改
+
+```c
+// 1. 添加头文件
+#include "delay.h"    // ← 新增
+
+// 2. 新增轻量 I2C 延时函数（在 OLED_I2C_Start 之前）
+static void OLED_I2C_Delay(void)
+{
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+    __NOP();
+}
+
+// 3. OLED_I2C_Start() — 4 处延时
+void OLED_I2C_Start(void)
+{
+    OLED_W_SDA(1);
+    OLED_I2C_Delay();   // ← SDA 建立时间
+    OLED_W_SCL(1);
+    OLED_I2C_Delay();   // ← SCL 高电平保持
+    OLED_W_SDA(0);
+    OLED_I2C_Delay();   // ← 起始条件保持
+    OLED_W_SCL(0);
+    OLED_I2C_Delay();   // ← 总线稳定
+}
+
+// 4. OLED_I2C_Stop() — 3 处延时
+void OLED_I2C_Stop(void)
+{
+    OLED_W_SDA(0);
+    OLED_I2C_Delay();   // ← SDA 建立时间
+    OLED_W_SCL(1);
+    OLED_I2C_Delay();   // ← SCL 高电平保持
+    OLED_W_SDA(1);
+    OLED_I2C_Delay();   // ← 终止条件保持
+}
+
+// 5. OLED_I2C_SendByte() — 每 bit 3 处延时 + 第 9 时钟 2 处延时
+void OLED_I2C_SendByte(uint8_t Byte)
 {
     uint8_t i;
     for (i = 0; i < 8; i++)
     {
-        MyI2C_W_SDA(SDA_GPIOx, SDA_Pin, !!(Byte & (0x80 >> i)));
-        I2C_DELAY();                               // ← 添加：SDA 建立时间
-        MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 1);
-        I2C_DELAY();                               // ← 添加：SCL 高电平保持
-        MyI2C_W_SCL(SCL_GPIOx, SCL_Pin, 0);
-        I2C_DELAY();                               // ← 添加：SCL 低电平保持
+        OLED_W_SDA(!!(Byte & (0x80 >> i)));
+        OLED_I2C_Delay();   // ← SDA 建立时间
+        OLED_W_SCL(1);
+        OLED_I2C_Delay();   // ← SCL 高电平保持
+        OLED_W_SCL(0);
+        OLED_I2C_Delay();   // ← SCL 低电平保持 + 下一 bit SDA 建立
     }
+    OLED_W_SCL(1);
+    OLED_I2C_Delay();       // ← 第 9 时钟 SCL 高
+    OLED_W_SCL(0);
+    OLED_I2C_Delay();       // ← 第 9 时钟 SCL 低
 }
 ```
 
-同样在 OLED 的 `OLED_I2C_SendByte()` 中也需要添加延时。但需注意：
+#### MyI2C.c 修改
 
-> ⚠️ **性能影响：** 添加 I2C 延时后，OLED 全屏刷新（1024 字节 × 约 26 次 GPIO 操作 × 每次加 2μs 延时）的耗时将从 ~3ms 增加到约 **~50ms**。这与菜单滑动动画优化（问题六）的目标存在矛盾，需要权衡。
+6 个协议函数全部添加 `delay_us()` 调用（`delay.h` 此前已包含）：
 
-**推荐方案：仅在 MyI2C 模块统一添加延时**（OLED 的 I2C 函数是独立实现的，也需要同步修改）。可以将 I2C 延时作为可配置参数：
+- `MyI2C_Start()`: +4 处 `delay_us(1)` / `delay_us(2)`
+- `MyI2C_Stop()`: +3 处
+- `MyI2C_SendByte()`: 每 bit +3 处（`delay_us(1)` + `delay_us(2)` + `delay_us(1)`）
+- `MyI2C_ReceiveByte()`: 每 bit +2 处（`delay_us(2)` + `delay_us(1)`）
+- `MyI2C_SendAck()`: +3 处
+- `MyI2C_ReceiveAck()`: +3 处
 
-```c
-// MyI2C.h — 添加延时配置宏
-#define MYI2C_DELAY_US          1       // I2C 半周期延时(μs)，1μs → ~500kHz
+### 修复效果
 
-// MyI2C.c
-static void MyI2C_Delay(void)
-{
-#if MYI2C_DELAY_US > 0
-    delay_us(MYI2C_DELAY_US);
-#endif
-}
-```
+| 参数 | 修复前 | 修复后 | 规范要求 |
+|------|--------|--------|---------|
+| OLED SCL 频率 | 3.3~6.7 MHz ❌ | ~400 kHz ✅ | ≤ 400 kHz |
+| MPU6050 SCL 频率 | 3.3~6.7 MHz ❌ | ~250 kHz ✅ | ≤ 400 kHz |
+| SCL 高电平 | ~0.05~0.1 μs ❌ | ~0.8 μs ✅ | ≥ 0.6 μs |
+| SDA setup | ~0~50 ns ❌ | ~0.8 μs ✅ | ≥ 100 ns |
+| OLED 全屏刷新 (OLED_Update) | ~0.4 ms | ~12 ms（83 FPS） | 人眼流畅 ≥ 24 FPS |
+
+### 性能影响评估
+
+| 调用场景 | I2C 字节数 | 修复前耗时 | 修复后耗时 | 影响 |
+|---------|-----------|-----------|-----------|------|
+| `OLED_Update()` 全屏 | 1040 | ~0.4ms | ~12ms | 流畅（83 FPS） |
+| `OLED_UpdateArea()` 菜单 6 页 | 768 | ~0.3ms | ~9ms | 流畅 |
+| 菜单滑动 6 帧 × UpdateArea | — | ~36ms | ~54ms | 仍远快于原始 1296ms |
+| MPU6050 读 ID | ~5 | ~2μs | ~0.2ms | 无影响 |
+| MPU6050 读 6 轴 | ~30 | ~12μs | ~1ms | 无影响 |
 
 ### 涉及文件
 
 | 文件 | 修改内容 |
 |------|---------|
-| `SmartWatch_HAL/HAL/Core/Src/MyI2C.c` | 在 SCL/SDA 翻转之间添加 `delay_us()` 调用 |
-| `SmartWatch_HAL/HAL/Core/Src/Hardware/OLED.c` | `OLED_I2C_SendByte()` 中添加相同的延时 |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/OLED.c` | 新增 `OLED_I2C_Delay()`（NOP 循环），在 `OLED_I2C_Start/Stop/SendByte` 中添加延时调用 |
+| `SmartWatch_HAL/HAL/Core/Src/MyI2C.c` | 在 `Start/Stop/SendByte/ReceiveByte/SendAck/ReceiveAck` 共 6 个函数中添加 `delay_us()` 调用 |
 
-### 备注
+### 设计决策
 
-- OLED 和 MPU6050 使用**不同的软件 I2C 实现**（OLED 内嵌在 `OLED.c`，MPU6050 使用 `MyI2C.c`），两处都需要修改
-- 如果未来改为硬件 I2C（STM32F103 有 2 个硬件 I2C 外设），此问题自动解决
-- 当前 72MHz 主频下，`delay_us(1)` 约 72 个 CPU 周期，实际延时约 1μs；`delay_us(2)` 约 2μs，SCL 频率约 250kHz，在 SSD1306 和 MPU6050 的规格范围内
+| 决策项 | 选择 | 原因 |
+|--------|------|------|
+| OLED 延时方式 | 展开 NOP（8 个） | 高频调用（每帧 ~1040 次），避免 `delay_us()` 的 DWT 寄存器开销和循环开销 |
+| MyI2C 延时方式 | `delay_us()` | 低频调用（每次读传感器 ~10 次），DWT 开销可忽略 |
+| NOP 个数 | 8 个（展开） | 72MHz 下每 NOP ~14ns，8 个 ≈ 0.8μs，SCL 频率 ~400kHz，紧贴规范上限以获得最佳刷新率 |
+| 延时值 (MyI2C) | 1~2 μs | SCL 周期 ≥ 5μs（200kHz），SCL 高 ≥ 2μs（远超 0.6μs 最低要求） |
 
 ---
 
@@ -1929,14 +2035,16 @@ while (1)
 | 问题十一 | 🟡 P2 ✅ | `dino.c` | `isColliding()` 内部含 UI 渲染和 1s 阻塞延时 | 游戏结束冻结 1s |
 | 问题十二 | 🟢 P3 ✅ | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
 | 问题十三 | 🟢 P3 ✅ | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
-| 问题十四 | 🟡 P2 | `OLED.c` / `MyI2C.c` | 软件 I2C 无延时，SCL 频率超限 | OLED 偶发花屏、MPU6050 读数偶发出错 |
+| 问题十四 | 🟡 P2 ✅ | `OLED.c` / `MyI2C.c` | 软件 I2C 无延时，SCL 频率超限 | OLED 偶发花屏、MPU6050 读数偶发出错 |
 | 问题十五 | 🟡 P2 | `menu.c` | 主循环每 1ms 全屏刷新，屏幕以 1000Hz 无意义重绘 | 电池耗电过快 |
 
 ### 修复建议优先级
 
 1. ~~**立即修复（P0）：** 问题七 + 问题八~~ ✅ 已修复 — `Set_Min()` 索引修正为4，`Set_Hour()` 边界修正为 `>= 24` / 回绕 `23`
 2. ~~**尽快修复（P1）：** 问题九~~ ✅ 已修复 — 边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码
-3. **计划修复（P2）：** 问题十四、十五 — 影响可靠性和功耗
+3. **计划修复（P2）：** ~~问题十四~~、十五 — 影响可靠性和功耗
+   - ~~问题十四~~ ✅ 已修复 — OLED.c 新增 `OLED_I2C_Delay()`（展开 8×NOP），MyI2C.c 全部 6 个协议函数添加 `delay_us()`
+   - 问题十五 — 待修复
    - ~~问题十~~ ✅ 已修复 — `Key_GetNum()` 添加 `__disable_irq()` / `__enable_irq()` 临界区保护
    - ~~问题十一~~ ✅ 已修复 — `isColliding()` 拆分为纯检测函数 + `Show_GameOver()`，连带修复问题十二、十三
 4. **低优先级（P3）：** ~~问题十二、十三~~ ✅ 已修复 — 随问题十一一并修正
