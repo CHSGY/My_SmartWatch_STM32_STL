@@ -1929,98 +1929,152 @@ void OLED_I2C_SendByte(uint8_t Byte)
 
 ### 原因分析
 
-`main()` 的主循环结构：
+经过代码审查发现，真正的功耗根源不在 `main()` 主循环（它仅在页面切换时执行一次绘制），而在**各个页面函数内部的 `while(1)` 循环**——它们以无限制的速率重复调用 `OLED_Update()`。
+
+以 `First_Page_Clock()` 为例的典型页面循环结构：
 
 ```c
-// main.c — 当前代码
-while (1)
+uint8_t First_Page_Clock(void)
 {
-    OLED_Clear();
-    Battery_Show_UI();
-    OLED_Update();                          // 全屏 I2C 发送 1024 字节
-    ClockUI_Move_Flag = First_Page_Clock(); // 内部 __WFI()，被 TIM2 1ms 唤醒
-    if(ClockUI_Move_Flag == 1) { Menu_Page(); }
-    else if(ClockUI_Move_Flag == 2) { SettingPage(); }
+    while(1)
+    {
+        KeyNum = Key_GetNum();     // 按键检测（极快）
+        // ... 按键处理 ...
+        Show_Clock_UI();           // 绘制显存
+        OLED_Update();             // 全屏 I2C 发送 1024 字节 → ~12ms
+        __WFI();                   // 等待中断 → 约 1ms 后被 TIM2 唤醒
+        // ↑ 看似休眠，实际 12ms I2C 传输期间 CPU 100% 忙等
+        // ↑ 12ms 传输完成后才到 __WFI()，然后立即被 1ms 中断唤醒
+        // ↑ 实际占空比接近 100%！
+    }
 }
 ```
 
-`First_Page_Clock()` 内部通过 `__WFI()` 等待中断，但 TIM2 每 **1ms** 触发一次中断。每次唤醒后：
+**时间线分析：**
 
-1. 回到 `while(1)` 开头
-2. `OLED_Clear()` — 清零 1024 字节显存
-3. `Battery_Show_UI()` — 绘制电池图标（大部分时间使用缓存值，开销小）
-4. `OLED_Update()` — **软件 I2C 发送 1024 字节 → ~3ms（72MHz 下）**
-5. 进入 `First_Page_Clock()` → `__WFI()` → 约 1ms 后被 TIM2 唤醒
-6. 重复步骤 2
+```
+t=0ms    Key_GetNum() → Show_Clock_UI() → OLED_Update() 开始
+t=1ms    TIM2 ISR 触发（无实际工作，只是唤醒）
+t=2ms    TIM2 ISR 再次触发...
+...
+t=12ms   OLED_Update() 传输完成
+t=12ms   __WFI() → 立即唤醒（TIM2 中断标志已置位）
+t=12ms   回到循环头 → OLED_Update() 再次开始（12ms I2C）
+```
 
-**功耗分析：**
+**关键发现：`__WFI()` 形同虚设。** 12ms 的软件 I2C bit-banging 期间 CPU 100% 忙等，完成后 `__WFI()` 立即被 1ms 周期的 TIM2 唤醒。CPU 占空比接近 **100%**。
 
-| 操作 | 频率 | 单次耗时 | 占空比 |
-|------|------|---------|--------|
-| OLED 全屏 I2C 刷新 | 1000 Hz | ~3 ms | **100%（持续工作）** |
-| CPU 唤醒 | 1000 Hz | — | 几乎 100% |
+**受影响的所有页面函数（共 9 个）：**
 
-屏幕被以 **1000 Hz**（每秒 1000 次）的速率全屏刷新，而人眼只需要 30~60 Hz。多余的 940+ 次刷新完全浪费电力。
+| 函数 | 所在页面 | 是否有 `__WFI` | 刷新频率 |
+|------|---------|---------------|---------|
+| `First_Page_Clock()` | 首页时钟 | ✅ 有 | ~83 Hz |
+| `SettingPage()` | 设置页面 | ❌ 无 | 无限 |
+| `Menu_Page()` | 菜单页面 | ✅ 有 | ~83 Hz |
+| `StopClock()` | 秒表页面 | ❌ 无 | 无限 |
+| `flashlight_Func()` | 手电筒页面 | ❌ 无 | 无限 |
+| `MPU6050_Main()` | 传感器页面 | ❌ 无 | 无限 |
+| `Game()` | 游戏选择页面 | ❌ 无 | 无限 |
+| `Emoji_Func()` | 表情动画页面 | ❌ 无 | 无限 |
+| `Gradienter_Func()` | 水平仪页面 | ✅ 有 | ~83 Hz |
 
 ### 解决方案
 
-在主循环中添加帧率控制，仅在必要时刷新屏幕：
+**方案选择：帧率控制（每页 `while(1)` 内部限流）**
+
+不在 `main()` 主循环限流——因为 `main()` 的绘制只在页面切换时执行一次，功耗贡献可忽略。而是在**每个页面函数内部的 `while(1)` 循环**中添加帧率控制，包裹绘制逻辑。
+
+#### 1. 添加帧率控制宏和变量
+
+在 `menu.h` 添加宏定义：
 
 ```c
-// main.c — 修改后
-#define FRAME_PERIOD_MS     33      // 约 30 FPS
+#define FRAME_PERIOD_MS         33      /* 帧率控制周期(ms)，约30FPS，降低OLED刷新功耗 */
+```
 
-while (1)
+在 `menu.c` 添加全局变量：
+
+```c
+static uint32_t last_draw_tick = 0;     /* 帧率控制，降低OLED刷新功耗 */
+```
+
+#### 2. 统一帧率控制模式
+
+每个页面函数的绘制逻辑用以下模式包裹：
+
+```c
+if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)  // 33ms → 30 FPS
 {
-    static uint32_t last_frame_tick = 0;
-    uint32_t now = HAL_GetTick();
-
-    // 帧率控制：仅在到达下一帧时刻时才重绘
-    if(now - last_frame_tick >= FRAME_PERIOD_MS)
-    {
-        last_frame_tick = now;
-
-        OLED_Clear();
-        Battery_Show_UI();
-        OLED_Update();
-    }
-
-    ClockUI_Move_Flag = First_Page_Clock();
-    if(ClockUI_Move_Flag == 1) { Menu_Page(); }
-    else if(ClockUI_Move_Flag == 2) { SettingPage(); }
+    last_draw_tick = HAL_GetTick();
+    // 原有绘制逻辑（switch/show 函数等，不变）
 }
+__WFI();    // 等待中断唤醒，降低空闲功耗
 ```
 
-> ⚠️ **注意：** 此方案有一个重要前提——`__WFI()` 的唤醒源必须改为非周期性唤醒。当前 `First_Page_Clock()` 等函数内部使用 `while(1) { ... __WFI(); }` 模式，被 TIM2 每 1ms 唤醒一次。要真正降低功耗，需要：
->
-> 1. 将时钟页面改为**仅在按键中断时唤醒**（使用 EXTI 外部中断代替轮询），而非定时器周期性唤醒
-> 2. 或者将 TIM2 周期从 1ms 增加到 33ms（30Hz），但会影响按键扫描响应速度（KeyTick 也依赖 TIM2）
->
-> **建议将此列为架构级改进，需要更全面的重新设计。**
+**实现说明：**
+- `HAL_GetTick()` 由 SysTick 硬件定时器驱动，每 1ms 递增一次
+- `last_draw_tick` 记录上一次绘制的时刻
+- 差值 < 33ms → 跳过绘制，直接 `__WFI()` 休眠
+- 差值 ≥ 33ms → 执行绘制并更新时间戳
+- `uint32_t` 溢出安全：无符号减法在回绕时仍正确（模运算特性）
 
-**折中方案（低风险）：**
+#### 3. 没有 `__WFI()` 的函数同时添加 `__WFI()`
 
-如果不想改动中断架构，可以简单降低主循环的刷新率：
+以下 6 个页面函数的 `while(1)` 原来**没有 `__WFI()`**，CPU 在无按键时持续空转，功耗极高。本次一并添加：
 
-```c
-// First_Page_Clock() 内部，在 __WFI() 前添加
-// 将 TIM2 周期从 1ms 改为 10ms（降低 10 倍刷新率）
-// TIM2: Prescaler=719, Period=999 → 72MHz/720/1000 = 100Hz = 10ms
-```
+- `SettingPage()` — 设置页面
+- `StopClock()` — 秒表页面
+- `flashlight_Func()` — 手电筒页面
+- `MPU6050_Main()` — 传感器页面
+- `Game()` — 游戏选择页面
+- `Emoji_Func()` — 表情动画页面
 
-这样屏幕刷新率从 1000Hz 降到 100Hz，功耗显著降低，同时按键扫描间隔 10ms 仍可接受（人类按键反应时间 > 100ms）。
+### 效果对比
+
+| 指标 | 修改前 | 修改后 |
+|------|--------|--------|
+| OLED 刷新频率 | ~83 Hz（每 12ms） | **~30 Hz**（每 33ms） |
+| CPU I2C 传输占空比 | ~100%（12ms/12ms） | **~36%**（12ms/33ms） |
+| `__WFI` 实际休眠 | 几乎为 0 | ~21ms/周期 → **约 64% 时间休眠** |
+| 预估功耗降低 | — | **约 2.5~3×** |
+
+### 风险分析
+
+| 风险 | 评估 |
+|------|------|
+| 按键响应变慢 | ❌ 无影响 — `Key_GetNum()` 在帧率控制**之前**执行，每 1ms 检查一次 |
+| 秒表显示延迟 | 轻微 — 秒表时间更新在 TIM2 ISR 中，但屏幕刷新最多延迟 33ms（人眼不可察觉） |
+| 动画流畅性 | 轻微 — 菜单滑动从每 12ms 一帧降到每 33ms 一帧，但仍高于 24 FPS 流畅阈值 |
+| `FRAME_PERIOD_MS=33` 过激进 | 可调 — 如果感觉卡顿，降低到 20ms（50 FPS）即可 |
 
 ### 涉及文件
 
 | 文件 | 修改内容 |
 |------|---------|
-| `SmartWatch_HAL/HAL/Core/Src/main.c` | 主循环添加帧率控制 |
-| `SmartWatch_HAL/HAL/Core/Src/main.c` | `MX_TIM2_Init()`：TIM2 Period 从 99 调整（可选，需权衡按键响应） |
+| `SmartWatch_HAL/HAL/Core/Inc/Hardware/menu.h` | 新增 `FRAME_PERIOD_MS` 宏定义（第 43 行） |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | 新增 `last_draw_tick` 全局变量（第 35 行） |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | 9 个页面函数的绘制逻辑包裹帧率控制 |
+| `SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c` | 6 个页面函数添加 `__WFI()` 休眠点 |
 
-### 备注
+### 修复实施（2026-06-14）
 
-- 此问题与问题六（时钟频率恢复）有交互：恢复 72MHz 后 OLED 刷新更快，但每秒刷新次数不变，功耗问题反而更突出（CPU 更快完成工作后有更多空闲时间，但 `__WFI()` 仍被 1ms 周期唤醒）
-- 长期方案建议将按键检测改为 EXTI 中断 + 消抖定时器，主循环只在有事件时才唤醒刷新
+**修改内容：**
+
+9 个页面函数的绘制区域统一添加帧率控制：
+
+| 函数 | 包裹的绘制区域 | 添加 `__WFI` |
+|------|--------------|-------------|
+| `First_Page_Clock()` | `switch(Clockmoveflag)` | ✅ 已有 |
+| `SettingPage()` | `switch(SettingFlag)` | ✅ 新增 |
+| `Menu_Page()` | `if(MenuFlag==1)...else` 绘制块 | ✅ 已有 |
+| `StopClock()` | `switch(StopClock_Flag)` | ✅ 新增 |
+| `flashlight_Func()` | `switch(flashlight_Flag)` | ✅ 新增 |
+| `MPU6050_Main()` | `OLED_Clear→...→OLED_Update` 序列 | ✅ 新增 |
+| `Game()` | `switch(game_flag)` | ✅ 新增 |
+| `Emoji_Func()` | `Show_emoji_UI()` | ✅ 新增 |
+| `Gradienter_Func()` | `OLED_Clear→Show_Gradienter_UI` | ✅ 已有 |
+
+**编译验证：** Keil ARMCC V5.06 + `--c99` — **0 Error(s), 0 Warning(s)**
 
 ---
 
@@ -2036,15 +2090,15 @@ while (1)
 | 问题十二 | 🟢 P3 ✅ | `dino.c` | `dino.maxX = DINO_WIDTH` 应为 `DINO_X_POS + DINO_WIDTH` | 当前巧合正确，未来有隐患 |
 | 问题十三 | 🟢 P3 ✅ | `dino.c` | `Dino_JumpCount` 静态初始化为 1 而非 0 | 当前被 `Game_Init()` 覆盖，代码不规范 |
 | 问题十四 | 🟡 P2 ✅ | `OLED.c` / `MyI2C.c` | 软件 I2C 无延时，SCL 频率超限 | OLED 偶发花屏、MPU6050 读数偶发出错 |
-| 问题十五 | 🟡 P2 | `menu.c` | 主循环每 1ms 全屏刷新，屏幕以 1000Hz 无意义重绘 | 电池耗电过快 |
+| 问题十五 | 🟡 P2 ✅ | `menu.c` / `menu.h` | 9 个页面函数无帧率控制，CPU 占空比接近 100% | 电池耗电过快 |
 
 ### 修复建议优先级
 
 1. ~~**立即修复（P0）：** 问题七 + 问题八~~ ✅ 已修复 — `Set_Min()` 索引修正为4，`Set_Hour()` 边界修正为 `>= 24` / 回绕 `23`
 2. ~~**尽快修复（P1）：** 问题九~~ ✅ 已修复 — 边界检查移到 `OLED_ShowNum()` 之前，移除冗余代码
-3. **计划修复（P2）：** ~~问题十四~~、十五 — 影响可靠性和功耗
+3. **计划修复（P2）：** ~~问题十四~~、~~十五~~ — 影响可靠性和功耗
    - ~~问题十四~~ ✅ 已修复 — OLED.c 新增 `OLED_I2C_Delay()`（展开 8×NOP），MyI2C.c 全部 6 个协议函数添加 `delay_us()`
-   - 问题十五 — 待修复
+   - ~~问题十五~~ ✅ 已修复 — 9 个页面函数添加帧率控制 + 6 个缺少 `__WFI` 的函数补齐休眠点
    - ~~问题十~~ ✅ 已修复 — `Key_GetNum()` 添加 `__disable_irq()` / `__enable_irq()` 临界区保护
    - ~~问题十一~~ ✅ 已修复 — `isColliding()` 拆分为纯检测函数 + `Show_GameOver()`，连带修复问题十二、十三
 4. **低优先级（P3）：** ~~问题十二、十三~~ ✅ 已修复 — 随问题十一一并修正

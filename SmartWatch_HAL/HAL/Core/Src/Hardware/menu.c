@@ -32,6 +32,7 @@
 /* 电池电量缓存，避免每帧都做ADC采样 */
 static uint16_t cached_AD_Value = 0;
 static uint8_t Battery_Refresh_Cnt = 0;
+static uint32_t last_draw_tick = 0;	/* 帧率控制，降低OLED刷新功耗 */
 
 /*
 * @brief 电池电量显示UI
@@ -157,21 +158,26 @@ uint8_t First_Page_Clock(void)
 		}
 
 		/******Key Function Control******/
-		switch(Clockmoveflag)
+		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
 		{
-			case 1: //[菜单]
-				Show_Clock_UI();
-				OLED_ReverseArea(0,48,32,16);
-				OLED_Update();
-				break;
-			case 2: //[设置]
-				Show_Clock_UI();
-				OLED_ReverseArea(96,48,32,16);
-				OLED_Update();
-				break;
-			default:
-				break;
+			last_draw_tick = HAL_GetTick();
+			switch(Clockmoveflag)
+			{
+				case 1: //[菜单]
+					Show_Clock_UI();
+					OLED_ReverseArea(0,48,32,16);
+					OLED_Update();
+					break;
+				case 2: //[设置]
+					Show_Clock_UI();
+					OLED_ReverseArea(96,48,32,16);
+					OLED_Update();
+					break;
+				default:
+					break;
+			}		
 		}
+
 		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }
@@ -239,7 +245,10 @@ uint8_t SettingPage(void)
 		}
 
 		/******Background_Color of Function selection******/
-		switch(SettingFlag)
+				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
+switch(SettingFlag)
 		{
 			case 1: //[返回]
 				Show_Setting_UI();
@@ -251,8 +260,10 @@ uint8_t SettingPage(void)
 				OLED_ReverseArea(0,16,96,16);
 				OLED_Update();
 				break;
-		}
-	}
+		}		}
+
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 }
 
 
@@ -446,7 +457,10 @@ uint8_t Menu_Page(void)
 			;
 		}
 
-		if(MenuFlag==1)								//菜单位置：【返回】
+				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
+if(MenuFlag==1)								//菜单位置：【返回】
 		{
 			if(Direct_Flag == 1)					//上一项
 			{
@@ -466,7 +480,8 @@ uint8_t Menu_Page(void)
 			if(Direct_Flag == 1){Set_Selection(move_stateFlag,MenuFlag,MenuFlag-1);}
 			else if(Direct_Flag == 2){Set_Selection(move_stateFlag,MenuFlag-2,MenuFlag-1);}
 			else {Menu_Animation();}			//无按键，仅重画
-		}
+		}		}
+
 		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }
@@ -610,7 +625,10 @@ int StopClock(void)
 
 
 		/******Background_Color of Function selection******/
-		switch(StopClock_Flag)
+				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
+switch(StopClock_Flag)
 		{
 			case 1: 		//[返回]图标处
 				Show_StopClock_UI();
@@ -632,8 +650,10 @@ int StopClock(void)
 				OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
 				OLED_Update();
 				break;
-		}
-	}
+		}		}
+
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 }
 
 
@@ -721,7 +741,10 @@ int flashlight_Func(void)
 
 
 		/******Background_Color of Function selection******/
-		switch(flashlight_Flag)
+				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
+switch(flashlight_Flag)
 		{
 			case 1: 		//[返回]图标处
 				Show_flashlight_UI();
@@ -741,8 +764,10 @@ int flashlight_Func(void)
 			default:
 				Show_flashlight_UI();
 				break;
-		}
-	}
+		}		}
+
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 
 }
 
@@ -812,12 +837,17 @@ int MPU6050_Main(void)
 			return 0;
 		}
 
+		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
 		OLED_Clear();
 		MPU6050_Calculation_Euler_angles();
 		Show_MPU6050_UI();
 		OLED_ReverseArea(0,0,16,16);	//反相显示返回图标
 		OLED_Update();
-	}
+		}
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 
 }
 
@@ -886,7 +916,10 @@ int Game(void)
 
 
 		/******Background_Color of Function selection******/
-		switch(game_flag)
+				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
+switch(game_flag)
 		{
 			case 1: 		//[返回]图标处
 				Show_Game_UI();
@@ -901,8 +934,10 @@ int Game(void)
 			default:
 				Show_Game_UI();
 				break;
-		}
-	}
+		}		}
+
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 
 }
 
@@ -969,8 +1004,13 @@ int Emoji_Func(void)
 			OLED_Update();		//刷新屏幕
 			return 0;
 		}
+		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
 		Show_emoji_UI();
-	}
+		}
+			__WFI();	//等待中断唤醒，降低空闲功耗
+}
 
 }
 
@@ -1010,8 +1050,12 @@ uint8_t Gradienter_Func(void)
 			OLED_Update();		//刷新屏幕
 			return 0;
 		}	
+		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
+		{
+			last_draw_tick = HAL_GetTick();
 		OLED_Clear();
 		Show_Gradienter_UI();	// 内部已调用 OLED_Update()
+		}
 		__WFI();	//等待中断唤醒，降低空闲功耗
 	}
 }

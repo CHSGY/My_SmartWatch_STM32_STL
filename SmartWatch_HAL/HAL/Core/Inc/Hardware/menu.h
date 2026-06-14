@@ -40,6 +40,7 @@
 #define MENU_ICON_SIZE          32      /* 菜单图标尺寸(32x32) */
 #define MENU_ICON_SPACING       48      /* 图标间距(px) */
 #define MENU_SLIDE_STEP         8       /* 菜单滑动步长(px/帧) */
+#define FRAME_PERIOD_MS         33      /* 帧率控制周期(ms)，约30FPS，降低OLED刷新功耗 */
 #define MENU_ENTER_FRAMES       6       /* 进场动画帧数 */
 #define MENU_ENTER_STEP         8       /* 进场动画步距(px/帧) */
 
