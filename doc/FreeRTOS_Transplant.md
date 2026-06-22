@@ -2,6 +2,8 @@
 
 > **评估日期：** 2026-06-14（可行性分析）
 > **Phase 1 实施日期：** 2026-06-16
+> **Phase 2 实施日期：** 2026-06-22
+> **任务划分分析日期：** 2026-06-21
 > **编译验证：** ✅ ARMCC V5.06, 0 Error, 0 Warning
 > **目标 MCU：** STM32F103RBT6 (Cortex-M3)
 > **FreeRTOS 版本：** V10.3.1 (CMSIS_V1)
@@ -16,8 +18,12 @@
 - [需要解决的关键问题](#二需要解决的关键问题)
 - [不需要修改的部分](#三不需要修改的部分)
 - [推荐移植方案](#四推荐移植方案与工作量)
+  - [4.1 任务划分方案](#41-任务划分方案)
+  - [4.2 分阶段实施](#42-分阶段实施)
+  - [4.3 总预估](#43-总预估)
 - [Phase 1 实施记录](#五phase-1-实施记录--cubemx-集成-freertos)
 - [Phase 1 遇到的问题](#六phase-1-遇到的问题与解决方案)
+- [Phase 2 实施记录](#六续phase-2-实施记录--创建-task_input)
 - [结论](#七结论)
 
 ---
@@ -110,35 +116,33 @@ HAL 库提供完整的 `HAL_Delay()` 和 `HAL_GetTick()` 抽象层，迁移时�
 
 ---
 
-### 1.4 临界区保护模式已建立 ✅
+### 1.4 临界区保护模式已建立 ✅ → FreeRTOS 升级完成 ✅
 
 **涉及文件：** [Key.c](../SmartWatch_HAL/HAL/Core/Src/Hardware/Key.c) — `Key_GetNum()`
 
-问题十修复后，`Key_GetNum()` 已使用 `__disable_irq()` / `__enable_irq()` 保护读-改-写临界区：
+问题十修复后，`Key_GetNum()` 已使用 `__disable_irq()` / `__enable_irq()` 保护读-改-写临界区。
+Phase 2 已升级为 FreeRTOS 版本，同时修复了原裸机版的临界区配对 bug（两个 `__enable_irq()` 出口，FreeRTOS 嵌套计数器下会溢出）：
 
 ```c
+// Phase 2 升级后（FreeRTOS 版本）：
 uint8_t Key_GetNum(void)
 {
-    uint8_t Temp;
-    __disable_irq();
+    uint8_t Temp = 0;
+    taskENTER_CRITICAL();       /* 使用 BASEPRI 屏蔽，嵌套安全 */
     if(Key_Num) {
         Temp = Key_Num;
         Key_Num = 0;
-        __enable_irq();
-        return Temp;
     }
-    __enable_irq();
-    return 0;
+    taskEXIT_CRITICAL();        /* 统一出口，一次 ENTER 配一次 EXIT */
+    return Temp;
 }
 ```
 
-迁移到 FreeRTOS 时只需替换为：
-
-```c
-taskENTER_CRITICAL();
-// ... 临界区代码 ...
-taskEXIT_CRITICAL();
-```
+| 项目 | 裸机版 | FreeRTOS 版 |
+|------|--------|------------|
+| 屏蔽方式 | `__disable_irq()` (PRIMASK) | `taskENTER_CRITICAL()` (BASEPRI) |
+| 配对 | 1 disable : 2 enable (bug) | 1 enter : 1 exit (正确) |
+| ISR 响应 | 全部屏蔽 | 仅屏蔽受控范围 (BASEPRI=0x30) |
 
 ---
 
@@ -162,9 +166,9 @@ __WFI();    // 等待中断唤醒
 ```
 
 FreeRTOS 下可迁移为：
-- 每个页面一个独立任务
-- `vTaskDelayUntil()` 替代帧率控制
-- 空闲任务钩子中执行 `__WFI()`
+- 所有页面合并到 `Task_UI` 统一任务（页面互斥，不需要并行）
+- `xTaskNotifyWait()` 33ms 超时替代帧率控制 + 按键等待
+- `vApplicationIdleHook()` 中统一执行 `__WFI()`
 
 ---
 
@@ -235,39 +239,46 @@ uint8_t First_Page_Clock(void)
 
 **改造方案：**
 
-将每个页面函数改造为**独立任务 + 状态机**模型：
+将所有页面函数改造为 `Task_UI` 任务内部的**状态机**模型：
 
 ```c
-// FreeRTOS 架构：每个页面是一个独立任务
-void Task_Clock(void *pvParameters)
+// FreeRTOS 架构：Task_UI 统一管理所有页面
+void Task_UI(void *pvParameters)
 {
-    TickType_t lastWakeTime = xTaskGetTickCount();
-
+    uint32_t key;
     while(1)
     {
-        // 等待按键通知（非阻塞）
-        uint32_t key;
+        // 等待按键通知（33ms 超时 = 30FPS 帧驱动）
         if(xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(33)) == pdTRUE)
         {
-            // 处理按键
+            UI_ProcessKey(key);     // 处理按键 → 修改 g_CurrentPage
         }
 
-        // 帧率控制
-        vTaskDelayUntil(&lastWakeTime, pdMS_TO_TICKS(FRAME_PERIOD_MS));
-
-        // 绘制
-        Show_Clock_UI();
-        OLED_Update();
+        // 帧率控制 + 渲染
+        switch(g_CurrentPage)
+        {
+            case PAGE_CLOCK:      Render_Clock();       break;
+            case PAGE_MENU:       Render_Menu();        break;
+            case PAGE_SETTING:    Render_Setting();     break;
+            case PAGE_STOPWATCH:  Render_Stopwatch();   break;
+            // ... 其余页面
+        }
+        OLED_Update();  // 统一在此更新 OLED
     }
 }
 ```
 
 | 项目 | 当前架构 | FreeRTOS 架构 |
 |------|---------|--------------|
-| 页面切换 | 函数嵌套调用 | 任务挂起/恢复 |
-| 按键获取 | `Key_GetNum()` 轮询 | `xTaskNotifyWait()` 阻塞等待 |
-| 帧率控制 | `HAL_GetTick()` 轮询 | `vTaskDelayUntil()` 精确调度 |
-| 休眠 | `__WFI()` | 空闲任务自动 `WFI` |
+| 页面切换 | 函数嵌套调用 | `g_CurrentPage` 赋值 |
+| 按键获取 | `Key_GetNum()` 轮询 | `xTaskNotifyWait()` 阻塞等待（经 Task_Input 转发） |
+| 帧率控制 | `HAL_GetTick()` 轮询 | `xTaskNotifyWait()` 33ms 超时 |
+| 休眠 | 9 个页面中各一个 `__WFI()` | `vApplicationIdleHook()` 中统一 `__WFI()` |
+| OLED 访问 | 各页面各自调用 | Task_UI 独占，无需互斥锁 |
+
+> **为什么不是一个页面一个任务：** 页面之间互斥（用户同时只看一个），不需要并行运行；
+> 软件 I2C 不可抢占，多任务共享 OLED 需要互斥锁且会引发优先级反转。
+> 将互斥的操作放在同一任务中，从设计上消除锁的需求。
 
 ---
 
@@ -356,40 +367,33 @@ void SysTick_Handler(void)
 
 ### 2.5 🟡 SRAM 20KB — 资源紧张
 
-**SRAM 使用预估：**
+**SRAM 使用预估（3 用户任务方案）：**
 
 | 项目 | 预估用量 |
 |------|---------|
-| FreeRTOS 内核数据 (TCB、队列、定时器) | ~1-2 KB |
-| Task_Clock 栈 (首页时钟) | ~512-1024 字节 |
-| Task_Menu 栈 (菜单页面) | ~512-1024 字节 |
-| Task_Stopwatch 栈 (秒表) | ~512 字节 |
-| Task_Sensors 栈 (MPU6050) | ~512 字节 |
-| Task_Dino 栈 (恐龙游戏) | ~1024 字节 |
-| 全局变量 (现有 ~3-5KB) | ~3-5 KB |
-| HAL 缓冲区 | ~1 KB |
-| **总计预估** | **~8-15 KB** |
+| FreeRTOS heap（5 任务 + TCB + 余量） | ~4.3 KB |
+| 全局变量 (`OLED_DisplayBuf[8][128]` 等) | ~5 KB |
+| HAL 缓冲区 + startup 栈 | ~1.5 KB |
+| **总计预估** | **~10.8 KB** |
 
-20KB SRAM 够用但**不宽裕**。关键策略：
+20KB SRAM 中 ~10.8KB 已用，余量 ~9.2KB。关键策略：
 
 | 策略 | 说明 |
 |------|------|
 | 精确配置栈大小 | 使用 `uxTaskGetStackHighWaterMark()` 调优 |
 | 避免递归 | 所有函数禁止递归调用 |
 | 减少大数组 | 检查是否有不必要的全局缓冲区 |
-| OLED 显存 | 当前显存在 OLED 驱动 IC 内（外部），不占用 SRAM |
+| OLED 显存 | `OLED_DisplayBuf[8][128]` 在 MCU SRAM 中（1KB），已计入全局变量；SSD1306 内部 GDDRAM 仅作 I2C 传输目标，不额外占 MCU 内存 |
+| 任务数精简 | 3 个用户任务 vs 初版 13 个，直接省 ~5.3KB heap |
 
 ---
 
-### 2.6 🟢 HAL_Delay() 需要替换
+### 2.6 🟢 HAL_Delay() 需要替换 — 已确认无需处理 ✅
 
-代码中可能存在 `HAL_Delay()` 调用，该函数基于 SysTick 轮询，在 FreeRTOS 下会导致：
-1. SysTick 被 FreeRTOS 接管时 `HAL_Delay()` 失效
-2. 轮询浪费 CPU 时间
+代码中**不存在** `HAL_Delay()` 调用。项目所有延时均使用 DWT 的 `delay_us()` / `delay_ms()`，
+完全不依赖 SysTick 轮询，与 FreeRTOS 零冲突。
 
-**替换方案：** `HAL_Delay(ms)` → `vTaskDelay(pdMS_TO_TICKS(ms))`
-
-**搜索命令：** 在工程中 grep 查找所有 `HAL_Delay(` 出现的位置。
+> 已通过 grep 全工程验证：0 处 `HAL_Delay(` 调用。
 
 ---
 
@@ -412,30 +416,28 @@ void SysTick_Handler(void)
 
 ## 四、推荐移植方案与工作量
 
-### 4.1 架构变化
+### 4.1 任务划分方案
+
+> **设计原则：** 任务划分的依据不是"有几个页面"，而是"哪些事情需要同时做"。
+> 互斥的操作放在同一任务（消除锁的需求），并行的操作才拆分为独立任务。
+
+#### 4.1.1 为什么不是"每个页面一个任务"
+
+文档初版曾规划 13 个任务（每个页面一个 + Task_Input + Idle/Timer），经深入分析后否定该方案，
+原因如下：
+
+| 约束 | 分析 | 结论 |
+|:---|:---|:---|
+| **页面互斥** | 用户同一时刻只看一个页面。时钟/菜单/秒表/游戏不会同时运行 | 不需要并行 → 不需要独立任务 |
+| **软件 I2C 不可抢占** | `OLED_Update()` 是 12ms CPU 忙等。如果两个任务都要操作 OLED，必须用互斥锁——但高优先级任务会被正在做 I2C 的低优先级任务阻塞 12ms（优先级反转） | 单任务独占 OLED → 根本不需要锁 |
+| **SRAM 20KB 紧张** | 每增加一个任务 = ~80B TCB + N×4B 栈。13 任务 ≈ 9.6KB heap | 减少任务数直接省内存 |
+
+**核心认知：** 把裸机 while(1) 一对一映射为 FreeRTOS task 是过渡阶段的自然思维，
+但 RTOS 的真正价值在于"需要并行时才拆任务"，而非"有几个函数就建几个任务"。
+
+#### 4.1.2 最终任务划分（3 个用户任务）
 
 ```
-当前架构 (裸机 Super Loop):
-
-main()
-├── HAL_Init()
-├── SystemClock_Config()
-├── MX_GPIO_Init() / MX_ADC1_Init() / MX_TIM2_Init() / MX_RTC_Init()
-├── Key_Init() / OLED_Init() / MPU6050_Init() / MyRTC_Init()
-├── HAL_TIM_Base_Start_IT(&htim2)
-├── while(1)
-│   ├── Battery_Show_UI()
-│   ├── First_Page_Clock()   ← while(1) 独占
-│   ├── Menu_Page()          ← while(1) 独占
-│   └── SettingPage()        ← while(1) 独占
-│
-TIM2_IRQHandler (1ms)
-├── Key3_Tick()
-├── KeyTick()
-├── StopClock_Tick()
-└── dino_tick()
-
-
 FreeRTOS 架构:
 
 main()
@@ -443,26 +445,163 @@ main()
 ├── SystemClock_Config()
 ├── MX_GPIO_Init() / ... / MX_RTC_Init()
 ├── Key_Init() / OLED_Init() / MPU6050_Init() / MyRTC_Init()
-├── 创建任务队列
-│   ├── Task_Clock      (优先级 2)
-│   ├── Task_Menu       (优先级 2)
-│   ├── Task_Stopwatch  (优先级 1)
-│   ├── Task_Dino       (优先级 1)
-│   ├── Task_Sensors    (优先级 1)
-│   └── Task_Input      (优先级 3) ← 按键处理
+├── 创建 3 个用户任务
+│   ├── Task_Input   (优先级 3, 栈 384B)   ← 按键接收 + 路由
+│   ├── Task_UI      (优先级 2, 栈 1280B)  ← 全部 9 个页面渲染
+│   └── Task_Sensor  (优先级 1, 栈 512B)   ← MPU6050 后台连续采样
 ├── vTaskStartScheduler()
 └── (永不返回)
 
 TIM2_IRQHandler (1ms)
-├── Key3_Tick()           ← 仍可在 ISR 中执行
-├── KeyTick()
+├── Key3_Tick()
+├── KeyTick()                         ← ISR 中检测按键
 ├── StopClock_Tick()
 ├── dino_tick()
-└── vTaskNotifyGiveFromISR()  ← 通知 Task_Input
+└── vTaskNotifyGiveFromISR()          ← 通知 Task_Input
 
 空闲任务
-└── __WFI()              ← 自动休眠
+└── vApplicationIdleHook() → __WFI()  ← 统一休眠点
 ```
+
+#### 4.1.3 各任务详细说明
+
+**Task_Input — 按键处理任务（优先级 3，最高用户任务）**
+
+| 属性 | 值 | 理由 |
+|:---|:---|:---|
+| 优先级 | 3 | 按键响应是用户体验核心，不能被 UI 渲染阻塞 |
+| 栈大小 | 384 bytes (96 words) | 仅 Key_GetNum() + xTaskNotify()，无深层调用 |
+| 阻塞方式 | `ulTaskNotifyTake(pdTRUE, portMAX_DELAY)` | 无限阻塞，零 CPU，ISR 通知唤醒 |
+| 通信 | TIM2 ISR → Task Notification → Task_Input → Task Notification → Task_UI | 全链路 Task Notification，零额外 RAM |
+
+按键是**异步事件**，天然适合事件驱动模型。Task_Input 平时完全阻塞，
+按键到来时才被 ISR 唤醒。优先级 3 确保即使 Task_UI 正在执行 12ms 的 OLED I2C 传输，
+ISR 也能正常通知 Task_Input（通知在 ISR 中排队，退出 ISR 后投递）。
+
+全局按键（Key3 长按关机）在此统一处理，不依赖任何页面。
+
+**Task_UI — 统一页面渲染任务（优先级 2）**
+
+| 属性 | 值 | 理由 |
+|:---|:---|:---|
+| 优先级 | 2 | 低于 Task_Input（可被按键抢占），高于 Task_Sensor |
+| 栈大小 | 1280 bytes (320 words) | 覆盖所有页面函数 + OLED 驱动 + SetTime 嵌套调用 |
+| 阻塞方式 | `xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(33))` | 33ms 超时 = 30FPS 帧驱动；有按键时提前唤醒 |
+| 拥有资源 | OLED 帧缓冲 + OLED I2C 总线 (PB8/PB9) | 独占，无需互斥锁 |
+
+将 9 个页面函数改造为 Task_UI 内部的**状态机**：
+
+```
+Task_UI 主循环:
+  while(1) {
+      xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(33));  // 阻塞等待按键或 33ms 超时
+      
+      if (有按键) UI_ProcessKey(key);  // 修改 g_CurrentPage / 子状态
+      
+      switch(g_CurrentPage) {
+          case PAGE_CLOCK:      Render_Clock();       break;
+          case PAGE_MENU:       Render_Menu();        break;
+          case PAGE_SETTING:    Render_Setting();     break;
+          case PAGE_STOPWATCH:  Render_Stopwatch();   break;
+          case PAGE_FLASHLIGHT: Render_Flashlight();  break;
+          case PAGE_MPU6050:    Render_MPU6050();     break;
+          case PAGE_GAME_SELECT:Render_GameSelect();  break;
+          case PAGE_DINO:       Render_DinoGame();    break;
+          case PAGE_EMOJI:      Render_Emoji();       break;
+          case PAGE_GRADIENTER: Render_Gradienter();  break;
+      }
+      OLED_Update();  // ~12ms 阻塞 I2C
+  }
+```
+
+页面切换只需 `g_CurrentPage = PAGE_MENU` 一行代码，无需 `vTaskSuspend()`/`vTaskResume()` 的复杂同步。
+
+**为什么恐龙游戏不独立成任务：** 游戏的时序驱动来自 TIM2 ISR 的 `dino_tick()`（1ms 更新分数/位置/跳跃），
+渲染循环只是读取并绘制。30FPS 渲染完全够用——游戏逻辑仍然是 1000Hz 精度。独立任务需要互斥锁保护 OLED，
+反而引入优先级反转问题。
+
+**为什么秒表不独立成任务：** 计时由 `StopClock_Tick()` 在 TIM2 ISR 中完成，Task_UI 只需每 33ms 读取显示，
+与独立任务效果一致，省一个 TCB + 512B 栈。
+
+**Task_Sensor — MPU6050 后台采样任务（优先级 1）**
+
+| 属性 | 值 | 理由 |
+|:---|:---|:---|
+| 优先级 | 1（最低用户任务） | 传感器采样不紧急，不应抢占 UI 渲染 |
+| 栈大小 | 512 bytes (128 words) | MPU6050_GetData + 互补滤波 + I2C 通信 |
+| 阻塞方式 | `vTaskDelay(pdMS_TO_TICKS(5))` | 5ms 采样间隔，释放 CPU |
+| 拥有资源 | MPU6050 I2C 总线 (PB10/PB11) | 独占，无需互斥锁 |
+
+独立采样任务的核心价值：
+
+- **解耦采样与显示。** 当前代码中 `MPU6050_Calculation_Euler_angles()` 嵌入在 `MPU6050_Main()` 和
+  `Gradienter_Func()` 各自的 while(1) 中。切换到水平仪页面时，Euler 角需重新收敛；离开 MPU6050 页面后，
+  数据停止更新。独立任务让传感器**持续采样**，无论当前显示哪个页面，数据始终最新。
+- **互补滤波器需要连续数据。** 互补滤波（α=0.9）依赖连续的时间序列积分，采样被页面切换打断会导致抖动。
+- **独立 I2C 总线。** MPU6050 使用 PB10/PB11，与 OLED (PB8/PB9) 物理隔离。Task_Sensor (Prio 1)
+  的 ~1ms I2C 传输可能被 Task_UI (Prio 2) 的 12ms OLED 传输抢占——这完全可接受，偶发的采样延迟
+  不影响数据质量。
+- **不放在 Task_UI 中。** 如果 Task_UI 既渲染又采样，两个操作串行化，帧率从 30FPS 降至 ~15FPS。
+  独立任务让两者并行。
+
+#### 4.1.4 资源共享与同步策略
+
+```
+OLED_DisplayBuf[8][128] + OLED I2C (PB8/PB9)
+    └── 拥有者: Task_UI (独占，无需锁)
+
+MPU6050 I2C (PB10/PB11)
+    └── 拥有者: Task_Sensor (独占，无需锁)
+
+g_Roll, g_Pitch, g_Yaw (Euler 角)
+    ├── 写入者: Task_Sensor (taskENTER_CRITICAL 保护)
+    └── 读取者: Task_UI (volatile 读取)
+
+MyRTC_Time[6]
+    ├── 写入者: Task_UI (SetTime 子状态)
+    └── 读取者: Task_UI (时钟页面)
+        → 同一任务，无需保护
+
+Key_Num (按键键码)
+    ├── 写入者: TIM2 ISR (KeyTick)
+    └── 读取者: Task_Input (taskENTER_CRITICAL 保护)
+
+Dino 游戏状态 (score, pos, ...)
+    ├── 写入者: TIM2 ISR (dino_tick)
+    └── 读取者: Task_UI (volatile 读取)
+        → ISR 写入 32-bit 单字是原子的，无需锁
+```
+
+**设计原则：每个共享资源只有一个写入者任务**（或 ISR），将并发冲突从"用锁解决"降维为"设计上不存在"。
+
+#### 4.1.5 内存预算
+
+| 项目 | 大小 | 累计 |
+|:---|:---|:---|
+| Idle Task 栈 | 512 B | 512 |
+| Timer Task 栈 | 1,024 B | 1,536 |
+| Task_Input 栈 | 384 B | 1,920 |
+| Task_UI 栈 | 1,280 B | 3,200 |
+| Task_Sensor 栈 | 512 B | 3,712 |
+| 5 个 TCB（~80B/个） | ~400 B | 4,112 |
+| 队列/互斥量 | ~200 B | 4,312 |
+| **FreeRTOS heap 使用** | **~4.3 KB** | |
+| **configTOTAL_HEAP_SIZE** | **10 KB** | |
+| **Heap 余量** | **~5.7 KB** | 充足 |
+
+> 20KB SRAM 总预算：~4.3KB FreeRTOS heap + 1KB startup 栈 + 0.5KB startup heap + ~5KB 全局变量（含 OLED 帧缓冲 1KB）≈ 10.8KB/20KB，余量 ~9.2KB。
+
+#### 4.1.6 与初版方案的对比
+
+| 维度 | 初版方案（每页面一任务） | 最终方案（3 用户任务） | 改善 |
+|:---|:---|:---|:---|
+| 用户任务数 | 10-12 个 | **3 个** | -7~9 个 TCB |
+| Heap 使用量 | ~9.6 KB | **~4.3 KB** | 节省 5.3 KB |
+| 互斥锁需求 | OLED 需要 | **不需要** | 消除优先级反转风险 |
+| 页面切换 | vTaskSuspend/vTaskResume | **g_CurrentPage 赋值** | 极简可靠 |
+| 帧率控制 | 每个任务各写一遍 | **Task_UI 统一管理** | 代码复用 |
+| __WFI() | 需要每个任务处理 | **Idle Hook 统一** | 符合 RTOS 最佳实践 |
+| 未来扩展（BLE 等） | 余量 ~0.6KB | **余量 ~5.7KB** | 可安全添加新任务 |
 
 ### 4.2 分阶段实施
 
@@ -477,45 +616,49 @@ TIM2_IRQHandler (1ms)
 | `USE_RTOS` 保持 `0U` | 2016 年版 HAL 不支持 RTOS 模式（见 [问题 2](#问题-2编译错误-user_tos--1u-触发-error)） | ✅ 已确认 |
 | MDK 编译验证 | ARMCC V5.06 编译通过，0 Error, 0 Warning | ✅ 已通过 |
 
-#### Phase 2：改造按键驱动
+#### Phase 2：改造按键驱动（创建 Task_Input） ✅ 已完成 (2026-06-22)
+
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| `Key_GetNum()` 临界区升级 | `__disable_irq()` → `taskENTER_CRITICAL()`，修复配对 bug | ✅ 已完成 (2026-06-21) |
+| 创建 `Task_Input` | 使用 `ulTaskNotifyTake()` 阻塞等待 ISR 通知 | ✅ 已完成 (2026-06-22) |
+| TIM2 ISR 中发送通知 | `KeyTick()` 后调用 `vTaskNotifyGiveFromISR()` | ✅ 已完成 (2026-06-22) |
+| 按键路由 | Task_Input → Task_UI 按键转发（全局按键在此处理） | ✅ 全局关机已实现；页面按键转发预留 TODO，待 Phase 3 Task_UI 创建后完成 |
+
+#### Phase 3：页面函数改造为 Task_UI 状态机
 
 | 任务 | 说明 | 预估时间 |
 |------|------|---------|
-| 创建 `Task_Input` | 负责按键处理，使用 `xTaskNotifyWait()` 阻塞 | 1 天 |
-| 修改 `Key_GetNum()` | 替换 `__disable_irq()` → `taskENTER_CRITICAL()` |  |
-| TIM2 ISR 中发送通知 | 使用 `vTaskNotifyGiveFromISR()` |  |
+| 定义页面枚举 + 状态机框架 | `PAGE_CLOCK / PAGE_MENU / ... / PAGE_GRADIENTER` | 2-3 天 |
+| 改造 9 个页面函数 | while(1) → switch-case 状态机，每次渲染一帧后返回 |  |
+| 移植帧率控制 | `xTaskNotifyWait()` 33ms 超时替代 `HAL_GetTick()` 轮询 |  |
+| 页面切换机制 | `g_CurrentPage` 赋值替代函数嵌套调用 |  |
+| 移植 `__WFI()` | 移至 `vApplicationIdleHook()`，删除 9 个页面中的手动 `__WFI()` |  |
 
-#### Phase 3：页面函数改造为独立任务
-
-| 任务 | 说明 | 预估时间 |
-|------|------|---------|
-| 拆分 9 个页面函数 | 每个页面创建独立任务 | 2-3 天 |
-| 实现页面切换机制 | 任务挂起/恢复 + 任务通知 |  |
-| 移植帧率控制 | `vTaskDelayUntil()` 替代 `HAL_GetTick()` 轮询 |  |
-| 移植 `__WFI()` | 空闲任务钩子中自动执行 |  |
-
-#### Phase 4：I2C 阻塞优化
+#### Phase 4：MPU6050 独立采样 + I2C 优化
 
 | 任务 | 说明 | 预估时间 |
 |------|------|---------|
-| 创建高优先级 I2C 任务 | 封装所有 OLED/MPU6050 I2C 操作 | 1 天 |
-| 评估硬件 I2C 迁移 | 研究 STM32F103 I2C1/I2C2 外设 | (可选) |
+| 创建 `Task_Sensor` | 独立任务，5ms 周期采样 + 互补滤波 | 1 天 |
+| 互补滤波迁移 | 从 `menu.c` 迁移到 `Task_Sensor` 任务上下文 |  |
+| 共享数据保护 | Euler 角 (`g_Roll/Pitch/Yaw`) 用临界区保护写入 |  |
+| 评估硬件 I2C 迁移 | 研究 STM32F103 I2C1/I2C2 外设替代软件 I2C | (可选) |
 
 #### Phase 5：回归测试与栈调优
 
 | 任务 | 说明 | 预估时间 |
 |------|------|---------|
-| 栈使用量分析 | `uxTaskGetStackHighWaterMark()` | 1-2 天 |
-| 功能回归测试 | 所有页面、按键、传感器、游戏 |  |
-| 功耗对比测试 | 移植前后电流对比 |  |
+| 栈使用量分析 | 对所有任务调用 `uxTaskGetStackHighWaterMark()` | 1-2 天 |
+| 功能回归测试 | 所有 9 个页面、按键响应、传感器数据、恐龙游戏 |  |
+| 功耗对比测试 | 移植前后电流对比（预期：空闲时自动 WFI，功耗持平或更优） |  |
 
 ### 4.3 总预估
 
 | 指标 | 值 |
 |------|-----|
-| **总工作量** | **5-8 个工作日** |
-| 新增/修改文件 | ~15-20 个 |
-| 核心改动量 | ~300-500 行 C 代码 |
+| **总工作量** | **4-7 个工作日**（相较初版方案减少 1 天，因任务数从 13 → 3 大幅减少同步复杂度） |
+| 新增/修改文件 | ~8-12 个 |
+| 核心改动量 | ~400-600 行 C 代码 |
 | 风险等级 | 中等 |
 
 ---
@@ -562,9 +705,9 @@ cp SmartWatch_HAL/HAL/Core/Inc/stm32f1xx_hal_conf.h backup/stm32f1xx_hal_conf.h.
 |:---|:---|:---|:---|
 | **USE_PREEMPTION** | `1` | 调度 | 抢占式调度，按键任务可打断 UI 渲染 |
 | **TICK_RATE_HZ** | `1000` | 时间基准 | 1ms tick，与 TIM2 周期一致，UI 帧率控制精度足够 |
-| **MAX_PRIORITIES** | `5` | 内存 | 5 个优先级够用（见 5.2.4 优先级分配），每个优先级增加一个就绪链表，少一级省 ~20 字节 RAM |
+| **MAX_PRIORITIES** | `5` | 内存 | 5 个优先级够用（见 5.2.7 优先级分配），每个优先级增加一个就绪链表，少一级省 ~20 字节 RAM |
 | **MINIMAL_STACK_SIZE** | `128` (512 bytes) | 内存 | 给 idle task + timer task 用，Cortex-M3 上下文 16 字 + 嵌套中断栈帧，余量充足 |
-| **MAX_TASK_NAME_LEN** | `16` | 调试 | 够写 `Task_Stopwatch` 等名字 |
+| **MAX_TASK_NAME_LEN** | `16` | 调试 | 够写 `Task_Sensor`、`Task_Input` 等名字 |
 | **USE_16_BIT_TICKS** | `0` | 时间基准 | 32-bit tick，1ms tick → 溢出时间 49.7 天，远超手表使用场景 |
 | **IDLE_SHOULD_YIELD** | `1` | 调度 | 有同优先级就绪任务时 idle task 主动让出 CPU |
 
@@ -572,7 +715,7 @@ cp SmartWatch_HAL/HAL/Core/Inc/stm32f1xx_hal_conf.h backup/stm32f1xx_hal_conf.h.
 
 | 参数 | 值 | 理由 |
 |:---|:---|:---|
-| **USE_MUTEXES** | `1` | I2C/OLED 资源互斥保护（软件 I2C 不能同时被两个任务操作） |
+| **USE_MUTEXES** | `1` | 保留启用，为未来共享资源（如 BLE 串口）预留。当前方案中 OLED 和 MPU6050 I2C 均为单任务独占，实际不需要互斥锁 |
 | **USE_RECURSIVE_MUTEXES** | `0` | 不需要递归锁 |
 | **USE_COUNTING_SEMAPHORES** | `0` | 暂不需要，按键通知用 Task Notifications 更轻量 |
 | **USE_TASK_NOTIFICATIONS** | `1` ⭐ | **Phase 2 的关键依赖！** ISR 中用 `vTaskNotifyGiveFromISR()` 通知按键任务，比信号量快 45%、省一个队列控制块 |
@@ -593,28 +736,21 @@ cp SmartWatch_HAL/HAL/Core/Inc/stm32f1xx_hal_conf.h backup/stm32f1xx_hal_conf.h.
 | **TOTAL_HEAP_SIZE** | `10240` (10KB) | 20KB SRAM 中分配 10KB 给 FreeRTOS heap，详见下方计算 |
 | **Memory Management** | `heap_4.c` | 最佳适配算法 + 相邻空闲块自动合并，防碎片 |
 
-**10KB 内存详细计算：**
+**10KB 内存详细计算（3 用户任务方案）：**
 
 | 项目 | 估算 | 累计 |
 |:---|:---|:---|
-| 空闲任务栈 | 512 bytes | 512 |
-| 定时器任务栈 | 1024 bytes | 1536 |
-| Task_Clock 栈 | 768 bytes | 2304 |
-| Task_Menu 栈 | 768 bytes | 3072 |
-| Task_Setting 栈 | 768 bytes | 3840 |
-| Task_Stopwatch 栈 | 512 bytes | 4352 |
-| Task_Sensors 栈 | 512 bytes | 4864 |
-| Task_Dino 栈 | 1024 bytes | 5888 |
-| Task_Input 栈 | 384 bytes | 6272 |
-| Task_Flashlight 栈 | 384 bytes | 6656 |
-| Task_Emoji 栈 | 512 bytes | 7168 |
-| Task_Gradienter 栈 | 512 bytes | 7680 |
-| Task_GameSelect 栈 | 384 bytes | 8064 |
-| 13 个 TCB（~80B/个） | ~1040 bytes | 9104 |
-| 队列/互斥量 | ~500 bytes | 9604 |
-| **安全余量** | **~636 bytes** | **10240** |
+| Idle Task 栈 | 512 bytes | 512 |
+| Timer Task 栈 | 1,024 bytes | 1,536 |
+| Task_Input 栈 | 384 bytes | 1,920 |
+| Task_UI 栈 | 1,280 bytes | 3,200 |
+| Task_Sensor 栈 | 512 bytes | 3,712 |
+| 5 个 TCB（~80B/个） | ~400 bytes | 4,112 |
+| 队列/互斥量（OLED 保护备用） | ~200 bytes | 4,312 |
+| **安全余量** | **~5,928 bytes** | **10,240** |
 
-> 20KB SRAM 总预算：10KB FreeRTOS heap + 1KB startup 栈 + 0.5KB startup heap + ~5KB 全局变量 ≈ 16.5KB/20KB，还有 3.5KB 系统余量。
+> 20KB SRAM 总预算：~4.3KB FreeRTOS heap + 1KB startup 栈 + 0.5KB startup heap + ~5KB 全局变量（含 OLED 帧缓冲 1KB）≈ 10.8KB/20KB，余量 ~9.2KB。
+> 对比初版 13 任务方案（~9.6KB heap 占用），3 任务方案节省约 5.3KB，为 BLE 通信、SPI Flash 等功能扩展预留了充裕空间。
 
 #### 5.2.5 调试与 Hook
 
@@ -642,14 +778,11 @@ cp SmartWatch_HAL/HAL/Core/Inc/stm32f1xx_hal_conf.h backup/stm32f1xx_hal_conf.h.
 
 | 任务 | 优先级 | 理由 |
 |:---|:---|:---|
-| **Task_Input** (按键) | **3** | 实时响应按键，不能被任何 UI 任务阻塞 |
-| **Task_Clock** (时钟首页) | **2** | 默认显示页面 |
-| **Task_Menu** (菜单) | **2** | 与时钟同级，同一时刻只有一个活跃 |
-| **Task_Setting** (设置) | **2** | 同上 |
-| **Task_Stopwatch** (秒表) | **1** | 后台运行，不阻塞 UI |
-| **Task_Dino** (恐龙游戏) | **1** | 游戏渲染，不阻塞 UI |
-| **Task_Sensors** (MPU6050) | **1** | 传感器采样，不阻塞 UI |
-| 其他页面任务 | **1** | 低优先级，不阻塞核心功能 |
+| **Task_Input** (按键处理) | **3** | 实时响应按键，不能被 UI 渲染阻塞 |
+| **Task_UI** (统一页面渲染) | **2** | 拥有 OLED，所有页面在此任务内运行 |
+| **Task_Sensor** (MPU6050 采样) | **1** | 后台连续采样，不阻塞 UI；偶发的采样延迟可接受 |
+| **Idle Task** | **0** | FreeRTOS 自动管理，idle hook 中执行 `__WFI()` |
+| **Timer Task** | **2** | FreeRTOS 内部，与 UI 同级，为未来定时功能预留 |
 
 #### 5.2.8 中断优先级配置
 
@@ -838,30 +971,93 @@ CubeMX 自动调整是为了确保 TIM2 ISR 能安全调用 `vTaskNotifyGiveFrom
 
 ---
 
+## 六（续）、Phase 2 实施记录 — 创建 Task_Input
+
+> **执行日期：** 2026-06-22
+> **方案确认：** 手动编写原生 FreeRTOS API（非 CubeMX CMSIS_V1），详见 [分析](#cubeMX-vs-手动对比)
+
+### Phase 2.1 `Key_GetNum()` 临界区升级
+
+**修改文件：** [Key.c](../SmartWatch_HAL/HAL/Core/Src/Hardware/Key.c)
+
+| 项目 | 裸机版 | FreeRTOS 版 |
+|------|--------|------------|
+| 屏蔽方式 | `__disable_irq()` (PRIMASK) | `taskENTER_CRITICAL()` (BASEPRI) |
+| 配对 | 1 disable : 2 enable（bug） | 1 enter : 1 exit（正确） |
+| 出口 | 两条路径分别 return | 统一出口 `return Temp` |
+| 头文件 | 仅 `Hardware/Key.h` | 新增 `FreeRTOS.h` + `task.h` |
+
+### Phase 2.2 创建 Task_Input 任务
+
+**涉及文件（5 个）：**
+
+| 文件 | 变更 |
+|------|------|
+| [Key.h](../SmartWatch_HAL/HAL/Core/Inc/Hardware/Key.h) | 新增 `FreeRTOS.h`/`task.h` include、`Key_HasPending()` 声明、`Task_Input_Handle` extern |
+| [Key.c](../SmartWatch_HAL/HAL/Core/Src/Hardware/Key.c) | 新增 `Task_Input_Handle` 全局定义、`Key_HasPending()` 函数 |
+| [stm32f1xx_it.c](../SmartWatch_HAL/HAL/Core/Src/stm32f1xx_it.c) | TIM2 ISR 新增 `vTaskNotifyGiveFromISR()` + `portYIELD_FROM_ISR()` |
+| [freertos.c](../SmartWatch_HAL/HAL/Core/Src/freertos.c) | 新增 `Task_Input()` 任务函数体 |
+| [main.c](../SmartWatch_HAL/HAL/Core/Src/main.c) | 新增 `FreeRTOS.h`/`task.h` include、`xTaskCreate(Task_Input, ...)` |
+
+**通信链路：**
+
+```
+TIM2_IRQHandler (1ms, 优先级 4,0)
+  └── KeyTick() → Key_Num 写入
+  └── Key_HasPending()? → vTaskNotifyGiveFromISR(Task_Input_Handle)
+      └── Task_Input 解除阻塞 (优先级 3)
+          └── Key_GetNum() [taskENTER_CRITICAL 保护]
+          └── Key3 长按(4)? → POWER_Shutdown()   ← 全局关机
+          └── 其他按键? → TODO Phase 3: xTaskNotify(Task_UI)
+```
+
+**安全验证：**
+
+| 检查项 | 结果 |
+|--------|------|
+| TIM2 优先级 4 > `configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY`(3) | ✅ FromISR 安全 |
+| `Task_Input_Handle != NULL` 防护 | ✅ ISR 在 xTaskCreate 前触发时跳过通知 |
+| `Key_HasPending()` ISR 中仅读取 `volatile uint8_t` | ✅ Cortex-M3 原子 |
+| `taskENTER_CRITICAL` 嵌套安全 | ✅ BASEPRI 屏蔽，不影响 SysTick (优先级 15) |
+
+### CubeMX vs 手动对比（创建任务）
+
+Phase 2 确认采用**手动编写原生 FreeRTOS API**，不使用 CubeMX CMSIS_V1：
+
+| 维度 | CubeMX CMSIS_V1 | 手动原生 API |
+|------|----------------|-------------|
+| Task Notification | `osSignal`（不等价，基于队列） | `vTaskNotifyGiveFromISR`（零 RAM，快 45%） |
+| 与文档设计一致性 | ❌ 文档全部使用原生 API | ✅ 完全一致 |
+| 重新生成风险 | CubeMX 可能覆盖任务配置 | `USER CODE` 区安全 |
+| 灵活性 | 受限 GUI 参数 | 完全控制 |
+
+---
+
 ## 七、结论
 
 ### 综合评估：✅ 可以移植，条件成熟
 
 | 维度 | 评分 | 说明 |
 |------|------|------|
-| 硬件资源 | 🟡 够用 | 20KB RAM 够用但需精打细算，栈大小需精确配置 |
+| 硬件资源 | 🟢 充裕 | 20KB RAM 中 ~10.8KB 已用，余量 ~9.2KB；3 用户任务方案大幅节省内存 |
 | 时钟系统 | 🟢 完全兼容 | 72MHz + DWT 延时方案确保零冲突 |
 | 驱动兼容性 | 🟢 大部分无需修改 | OLED/MyI2C/RTC/ADC/GPIO 均与 OS 无关 |
-| 架构适配 | 🟡 需要改造 | 页面 while(1) → 任务状态机是主要工作量 |
-| I2C 阻塞 | 🟡 可接受 | 短期用专用任务 + 高优先级，中期迁移硬件 I2C |
+| 架构适配 | 🟡 需要改造 | 页面 while(1) → Task_UI 状态机是主要工作量 |
+| I2C 阻塞 | 🟡 可接受 | Task_UI 独占 OLED I2C，Task_Sensor 独占 MPU6050 I2C；无需互斥锁 |
 
 ### 移植的收益
 
-1. **代码结构清晰** — 每个页面独立任务，职责单一
-2. **实时响应** — 按键任务高优先级，消除当前轮询延迟
-3. **功耗优化** — 空闲任务自动 `WFI`，比当前 `__WFI()` 模式更精确
-4. **扩展性** — 未来添加 BLE、SPI Flash、心率传感器等只需新增任务
-5. **调试便利** — FreeRTOS 的任务列表、栈监控等调试工具
+1. **代码结构清晰** — 按键输入、UI 渲染、传感器采样三个职责分离
+2. **实时响应** — 按键任务最高优先级（3），消除当前轮询延迟
+3. **功耗优化** — Idle Hook 统一 `__WFI()`，比 9 个页面各自手动 `__WFI()` 更精确
+4. **传感器持续采样** — MPU6050 互补滤波不再被页面切换打断
+5. **扩展性** — Heap 余量 ~5.9KB，SRAM 总余量 ~9.2KB，未来添加 BLE、SPI Flash、心率传感器等只需新增任务
+6. **调试便利** — FreeRTOS 的任务列表、栈监控等调试工具
 
 ### 移植的成本
 
-1. **工作量** — 5-8 个工作日
-2. **架构改动** — 页面函数需要重构为状态机
+1. **工作量** — 4-7 个工作日
+2. **架构改动** — 页面函数需要重构为状态机（while(1) → switch-case）
 3. **回归风险** — 需全面测试所有功能
 4. **Flash 占用** — FreeRTOS 内核约 6-8KB
 
@@ -869,7 +1065,7 @@ CubeMX 自动调整是为了确保 TIM2 ISR 能安全调用 `vTaskNotifyGiveFrom
 
 > **如果当前功能稳定且无新增需求，可以不急于移植。** 问题十五修复后，帧率控制 + `__WFI()` 已解决主要功耗问题（预估续航改善约 3 倍）。
 >
-> **如果计划添加多线程功能（如 BLE 通信、传感器数据后台采集），建议移植。** 推荐从 Phase 1 开始，快速验证 OS 启动，再逐步改造应用层。
+> **如果计划添加多线程功能（如 BLE 通信、传感器数据后台采集），建议移植。** 推荐按 Phase 1→5 顺序逐步实施。
 
 ---
 

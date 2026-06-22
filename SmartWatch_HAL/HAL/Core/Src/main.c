@@ -27,6 +27,8 @@
 #include "Hardware/menu.h"
 #include "Hardware/MPU6050.h"
 #include "MyRTC.h"
+#include "FreeRTOS.h"
+#include "task.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -65,7 +67,7 @@ static void MX_RTC_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
-
+extern void Task_Input(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -139,7 +141,8 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  /* 创建 Task_Input — 按键处理任务（优先级 3，栈 384 bytes） */
+  xTaskCreate(Task_Input, "Task_Input", 96, NULL, 3, &Task_Input_Handle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */

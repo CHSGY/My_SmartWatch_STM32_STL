@@ -190,6 +190,7 @@ void SysTick_Handler(void)
 void TIM2_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM2_IRQn 0 */
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   Key3_Tick();
   KeyTick();
   StopClock_Tick();
@@ -197,7 +198,12 @@ void TIM2_IRQHandler(void)
   /* USER CODE END TIM2_IRQn 0 */
   HAL_TIM_IRQHandler(&htim2);
   /* USER CODE BEGIN TIM2_IRQn 1 */
-
+  /* Notify Task_Input on key event */
+  if (Task_Input_Handle != NULL && Key_HasPending())
+  {
+    vTaskNotifyGiveFromISR(Task_Input_Handle, &xHigherPriorityTaskWoken);
+  }
+  portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
   /* USER CODE END TIM2_IRQn 1 */
 }
 

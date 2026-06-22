@@ -24,7 +24,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "Hardware/Key.h"
+#include "power.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,7 +50,7 @@
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
-
+void Task_Input(void *pvParameters);
 /* USER CODE END FunctionPrototypes */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
@@ -131,6 +132,44 @@ void vApplicationGetTimerTaskMemory( StaticTask_t **ppxTimerTaskTCBBuffer, Stack
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+
+/**
+  * @brief  Task_Input — 按键处理任务
+  * @param  pvParameters: 未使用
+  * @retval 无
+  * @note   优先级 3（最高用户任务），栈 384 bytes
+  *         阻塞等待 TIM2 ISR 的 Task Notification，
+  *         处理全局按键（Key3 长按关机），
+  *         其他按键转发给 Task_UI（Phase 3 实现）。
+  */
+void Task_Input(void *pvParameters)
+{
+  uint8_t key;
+  (void)pvParameters;
+
+  for (;;)
+  {
+    /* 阻塞等待 ISR 通知（无限等待，零 CPU 开销） */
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+    /* 读取并消费按键值 */
+    key = Key_GetNum();
+
+    if (key == 4)
+    {
+      /* Key3 长按 — 全局关机，不依赖当前页面 */
+      if (POWER_IsRunning())
+      {
+        POWER_Shutdown();
+      }
+    }
+    else if (key != 0)
+    {
+      /* 其他按键转发给 Task_UI（Phase 3 中 Task_UI 将用 xTaskNotifyWait 接收） */
+      /* TODO Phase 3: xTaskNotify(Task_UI_Handle, key, eSetValueWithOverwrite); */
+    }
+  }
+}
 
 /* USER CODE END Application */
 

@@ -22,6 +22,8 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "Hardware/Key.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -65,6 +67,9 @@ static volatile uint8_t Cur_KeyState = 0;
 
 /** @brief 按键3按住时间计数，单位ms */
 static uint16_t press_time = 0;
+
+/** @brief Task_Input 任务句柄，由 main.c 创建任务时赋值，ISR 用于通知 */
+TaskHandle_t Task_Input_Handle = NULL;
 
 /* USER CODE BEGIN PV */
 
@@ -114,17 +119,15 @@ void Key_Init(void)
 uint8_t Key_GetNum(void)
 {
   /* USER CODE BEGIN Key_GetNum */
-  uint8_t Temp;
-  __disable_irq();          /* 临界区开始：保护 Key_Num 读-改-写原子性 */
+  uint8_t Temp = 0;
+  taskENTER_CRITICAL();     /* FreeRTOS 临界区：保护 Key_Num 读-改-写原子性 */
   if(Key_Num)
   {
     Temp = Key_Num;
     Key_Num = 0;            /* 清空按键值，防止重复识别 */
-    __enable_irq();         /* 临界区结束 */
-    return Temp;
   }
-  __enable_irq();           /* 临界区结束 */
-  return 0;
+  taskEXIT_CRITICAL();      /* 临界区结束（统一出口，修复原 __enable_irq 配对 bug） */
+  return Temp;
   /* USER CODE END Key_GetNum */
 }
 
@@ -204,12 +207,24 @@ void Key3_Tick(void)
   {
     press_time++;
   }
-  
+
   if(HAL_GPIO_ReadPin(KEY3_GPIO_Port, KEY3_Pin) == GPIO_PIN_SET)
   {
     press_time = 0;
   }
   /* USER CODE END Key3_Tick */
+}
+
+/**
+  * @brief  检查是否有待处理的按键（仅查询不消费）
+  * @param  无
+  * @retval 0: 无按键待处理, 1: 有按键待处理
+  * @note   供 ISR 中判断是否需要通知 Task_Input
+  *         本函数在 ISR 上下文中调用，读取原子，无需临界区
+  */
+uint8_t Key_HasPending(void)
+{
+  return (Key_Num != 0) ? 1 : 0;
 }
 
 /* USER CODE BEGIN 1 */

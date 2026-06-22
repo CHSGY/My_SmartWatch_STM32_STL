@@ -24,6 +24,8 @@ extern "C" {
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -90,6 +92,17 @@ void KeyTick(void);
   * @note   需要在定时器中断(1ms)中调用
   */
 void Key3_Tick(void);
+
+/**
+  * @brief  检查是否有待处理的按键
+  * @param  无
+  * @retval 0: 无按键, 1: 有按键
+  * @note   仅查询不消费，供 ISR 判断是否需要通知 Task_Input
+  */
+uint8_t Key_HasPending(void);
+
+/* 按键处理任务句柄，由 main.c 创建任务时赋值，ISR 用于通知 */
+extern TaskHandle_t Task_Input_Handle;
 
 /* USER CODE BEGIN EFP */
 
