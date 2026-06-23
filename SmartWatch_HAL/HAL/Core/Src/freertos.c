@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "Hardware/Key.h"
 #include "power.h"
+#include "Hardware/menu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,6 +52,8 @@
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
 void Task_Input(void *pvParameters);
+void Task_UI(void *pvParameters);
+extern void Task_UI_RenderFrame(uint8_t key);
 /* USER CODE END FunctionPrototypes */
 
 /* GetIdleTaskMemory prototype (linked to static allocation support) */
@@ -65,17 +68,12 @@ void vApplicationStackOverflowHook(xTaskHandle xTask, signed char *pcTaskName);
 void vApplicationMallocFailedHook(void);
 
 /* USER CODE BEGIN 2 */
-__weak void vApplicationIdleHook( void )
+void vApplicationIdleHook( void )
 {
-   /* vApplicationIdleHook() will only be called if configUSE_IDLE_HOOK is set
-   to 1 in FreeRTOSConfig.h. It will be called on each iteration of the idle
-   task. It is essential that code added to this hook function never attempts
-   to block in any way (for example, call xQueueReceive() with a block time
-   specified, or call vTaskDelay()). If the application makes use of the
-   vTaskDelete() API function (as this demo application does) then it is also
-   important that vApplicationIdleHook() is permitted to return to its calling
-   function, because it is the responsibility of the idle task to clean up
-   memory allocated by the kernel to any task that has since been deleted. */
+   /* Phase 3: 统一休眠点 — 替代原 9 个页面函数中各自的手动 __WFI()
+    * 空闲任务每次迭代执行 WFI，MCU 进入低功耗等待中断唤醒。
+    * 不能阻塞、不能调用 API。 */
+   __WFI();
 }
 /* USER CODE END 2 */
 
@@ -165,8 +163,43 @@ void Task_Input(void *pvParameters)
     }
     else if (key != 0)
     {
-      /* 其他按键转发给 Task_UI（Phase 3 中 Task_UI 将用 xTaskNotifyWait 接收） */
-      /* TODO Phase 3: xTaskNotify(Task_UI_Handle, key, eSetValueWithOverwrite); */
+      /* 其他按键转发给 Task_UI（Phase 3 实现） */
+      if (Task_UI_Handle != NULL)
+      {
+        xTaskNotify(Task_UI_Handle, key, eSetValueWithOverwrite);
+      }
+    }
+  }
+}
+
+/**
+  * @brief  Task_UI — 统一页面渲染任务
+  * @param  pvParameters: 未使用
+  * @retval 无
+  * @note   优先级 2，栈 1280 bytes (320 words)
+  *         独占 OLED I2C 总线，所有 11 个页面在此任务内渲染。
+  *         xTaskNotifyWait(33ms) 同时实现帧率控制（30FPS）和按键事件驱动。
+  *         实际渲染逻辑委托给 menu.c 的 Task_UI_RenderFrame()。
+  */
+void Task_UI(void *pvParameters)
+{
+  uint32_t key;
+  (void)pvParameters;
+
+  /* 初始页面已在 g_CurrentPage 中设为 PAGE_CLOCK */
+
+  for (;;)
+  {
+    /* 等待按键通知（33ms 超时 = 30FPS 帧驱动，有按键时提前唤醒） */
+    if (xTaskNotifyWait(0, 0xffffffffUL, &key, pdMS_TO_TICKS(FRAME_PERIOD_MS)) == pdTRUE)
+    {
+      /* 有按键：处理状态转换 + 渲染 */
+      Task_UI_RenderFrame((uint8_t)key);
+    }
+    else
+    {
+      /* 超时（33ms 到期）：仅渲染（无按键） */
+      Task_UI_RenderFrame(0);
     }
   }
 }

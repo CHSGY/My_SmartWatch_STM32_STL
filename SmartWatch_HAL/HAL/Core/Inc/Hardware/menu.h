@@ -13,6 +13,39 @@
 #define __MENU_H
 
 #include "main.h"
+#include "FreeRTOS.h"
+#include "task.h"
+
+/* ================================================================
+ *  Task_UI 页面枚举（FreeRTOS 状态机）
+ * ================================================================ */
+
+/** @brief 页面标识符 */
+typedef enum {
+    PAGE_CLOCK = 0,       /* 首页时钟 */
+    PAGE_MENU,            /* 菜单页面 */
+    PAGE_SETTING,         /* 设置页面 */
+    PAGE_STOPWATCH,       /* 秒表 */
+    PAGE_FLASHLIGHT,      /* 手电筒 */
+    PAGE_MPU6050,         /* 传感器数据 */
+    PAGE_GAME_SELECT,     /* 游戏选择 */
+    PAGE_DINO_GAME,       /* 恐龙游戏（运行中） */
+    PAGE_EMOJI,           /* 表情动画 */
+    PAGE_GRADIENTER,      /* 水平仪 */
+    PAGE_SETTIME,         /* 设置时间 */
+    PAGE_COUNT            /* 页面总数 */
+} PageID_t;
+
+/** @brief SetTime 子状态 */
+typedef enum {
+    SETTIME_MENU = 0,     /* 主选择菜单：返回/年/月/日/时/分/秒 */
+    SETTIME_YEAR,
+    SETTIME_MONTH,
+    SETTIME_DAY,
+    SETTIME_HOUR,
+    SETTIME_MIN,
+    SETTIME_SEC
+} SetTimeState_t;
 
 /* ================================================================
  *  菜单/UI/秒表/电池/表情/水平仪参数宏定义
@@ -99,119 +132,43 @@
 #define EMOJI_BLINK_DELAY_MS    100     /* 眨眼帧延时(ms) */
 #define EMOJI_BLINK_GAP_MS      500     /* 眨眼间隔延时(ms) */
 
+/* ================================================================
+ *  FreeRTOS Task_UI 全局变量与接口
+ * ================================================================ */
+
+/** @brief 当前显示页面（Task_UI 状态机核心） */
+extern volatile PageID_t g_CurrentPage;
+
+/** @brief Task_UI 任务句柄（供 Task_Input 发送按键通知） */
+extern TaskHandle_t Task_UI_Handle;
+
 /**
-  * @brief 电池电量显示UI
+  * @brief Task_UI — 统一页面渲染任务
+  * @note  优先级 2，栈 1280 bytes，独占 OLED I2C 总线
+  *        通过 xTaskNotifyWait() 等待按键（33ms 超时 = 30FPS）
   */
+void Task_UI(void *pvParameters);
+
+/**
+  * @brief Task_UI 每帧渲染入口（由 freertos.c 的 Task_UI 主循环调用）
+  * @param key: 当前按键值（0=无按键/超时唤醒）
+  */
+void Task_UI_RenderFrame(uint8_t key);
+
+/* ================================================================
+ *  底层 UI 绘制函数（供 Task_UI 内 Render_* 调用）
+ * ================================================================ */
+
 void Battery_Show_UI(void);
-
-/**
-  * @brief 首页时钟界面显示
-  */
 void Show_Clock_UI(void);
-
-/**
-  * @brief 首页时钟页面按键控制逻辑
-  * @retval 返回值：1-进入菜单 2-进入设置
-  */
-uint8_t First_Page_Clock(void);
-
-/**
-  * @brief 显示设置页面UI
-  */
 void Show_Setting_UI(void);
-
-/**
-  * @brief 设置页面主函数
-  * @retval 0-返回首页
-  */
-uint8_t SettingPage(void);
-
-/**
-  * @brief 菜单滑动动画
-  */
 void Menu_Animation(void);
-
-/**
-  * @brief 菜单页面主函数
-  * @retval 0-返回首页
-  */
-uint8_t Menu_Page(void);
-
-/**
-  * @brief 显示秒表UI
-  */
 void Show_StopClock_UI(void);
-
-/**
-  * @brief 秒表计时滴答函数（中断调用）
-  */
 void StopClock_Tick(void);
-
-/**
-  * @brief 秒表功能主函数
-  * @retval 0-返回
-  */
-int StopClock(void);
-
-/**
-  * @brief 显示手电筒UI
-  */
 void Show_flashlight_UI(void);
-
-/**
-  * @brief 手电筒功能主函数
-  * @retval 0-返回
-  */
-int flashlight_Func(void);
-
-/**
-  * @brief MPU6050欧拉角解算（互补滤波）
-  */
 void MPU6050_Calculation_Euler_angles(void);
-
-/**
-  * @brief 显示MPU6050数据UI
-  */
 void Show_MPU6050_UI(void);
-
-/**
-  * @brief MPU6050功能主函数
-  * @retval 0-返回
-  */
-int MPU6050_Main(void);
-
-/**
-  * @brief 游戏选择页面主函数
-  * @retval 0-返回
-  */
-int Game(void);
-
-/**
-  * @brief 显示动态表情UI
-  */
 void Show_emoji_UI(void);
-
-/**
-  * @brief 动态表情功能主函数
-  * @retval 0-返回
-  */
-int Emoji_Func(void);
-
-/**
-  * @brief 显示水平仪UI
-  */
 void Show_Gradienter_UI(void);
-
-/**
-  * @brief 水平仪功能主函数
-  * @retval 0-返回
-  */
-uint8_t Gradienter_Func(void);
-
-/**
-  * @brief SetTime主流程
-  * @retval 0-返回
-  */
-int SetTime_mainprocess(void);
 
 #endif

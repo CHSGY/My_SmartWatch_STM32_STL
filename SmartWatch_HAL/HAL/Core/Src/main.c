@@ -55,7 +55,7 @@ TIM_HandleTypeDef htim2;
 
 osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
-extern uint8_t ClockUI_Move_Flag;
+/* Phase 3: ClockUI_Move_Flag removed — replaced by g_CurrentPage state machine */
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -68,6 +68,7 @@ void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 extern void Task_Input(void *pvParameters);
+extern void Task_UI(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -141,8 +142,10 @@ int main(void)
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* 创建 Task_Input — 按键处理任务（优先级 3，栈 384 bytes） */
+  /* Phase 2: 创建 Task_Input — 按键处理任务（优先级 3，栈 384 bytes） */
   xTaskCreate(Task_Input, "Task_Input", 96, NULL, 3, &Task_Input_Handle);
+  /* Phase 3: 创建 Task_UI — 统一页面渲染任务（优先级 2，栈 1280 bytes） */
+  xTaskCreate(Task_UI, "Task_UI", 320, NULL, 2, &Task_UI_Handle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
@@ -157,18 +160,10 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    OLED_Clear();
-    Battery_Show_UI();
-    OLED_Update();
-    ClockUI_Move_Flag = First_Page_Clock();
-    if(ClockUI_Move_Flag == 1)        //[菜单] 选项被选中
-    {
-      Menu_Page();                    //进入菜单页面
-    }
-    else if(ClockUI_Move_Flag == 2)   //[设置] 选项被选中
-    {
-      SettingPage();                  //进入设置页面
-    }
+    /* Phase 3: 裸机超级循环已移除。
+     * 所有页面渲染由 Task_UI (优先级 2) 统一管理，
+     * 按键输入由 Task_Input (优先级 3) 处理。
+     * 调度器启动后永远不会执行到这里。 */
   }
   /* USER CODE END 3 */
 }

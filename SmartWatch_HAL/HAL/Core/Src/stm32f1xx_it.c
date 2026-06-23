@@ -25,6 +25,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Hardware/Key.h"
+#include "Hardware/dino.h"
 #include "Hardware/menu.h"
 /* USER CODE END Includes */
 

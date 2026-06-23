@@ -1,12 +1,12 @@
 /**
   * @file           : SetTime.c
-  * @brief          : ÈÕÆÚÊ±¼äÉèÖÃ¹¦ÄÜ£¨HAL¿â°æ±¾£©
+  * @brief          : RTCæ—¶é—´è®¾ç½®åŠŸèƒ½ï¼ˆHALåº“ç‰ˆæœ¬ / FreeRTOSçŠ¶æ€æœºç‰ˆï¼‰
   * @author         : CHSGY
   * @date           : 2026-06-08
   *
-  * @note           : ´Ó±ê×¼¿âSetTime.cÒÆÖ²£¬Ö÷ÒªÐÞ¸Äµã£º
-  *                   1. Í·ÎÄ¼þ stm32f10x.h ¡ú main.h
-  *                   2. Í·ÎÄ¼þÂ·¾¶ OLED.h/Key.h/menu.h ¡ú Hardware/Ç°×º
+  * @note           : Phase 3 æ”¹é€ ï¼šSet_Year/Month/Day/Hour/Min/Sec + SetTime_mainprocess
+  *                   çš„ while(1) å¾ªçŽ¯å·²è¿ç§»åˆ° menu.c çš„ Task_UI çŠ¶æ€æœºä¸­ã€‚
+  *                   æ­¤æ–‡ä»¶ä»…ä¿ç•™åº•å±‚ç»˜åˆ¶å‡½æ•°å’Œ ChangeRTC_Time()ã€‚
   */
 
 #include "main.h"
@@ -17,39 +17,39 @@
 #include "Hardware/SetTime.h"
 
 
-/***************************ÈÕÆÚÊ±¼äÉèÖÃ¹¦ÄÜ***********************************/
+/***************************RTCæ—¶é—´è®¾ç½®åŠŸèƒ½***********************************/
 
 /**
-  * @brief ÏÔÊ¾ÈÕÆÚÉèÖÃUI
-  * @param  ÎÞ
-  * @retval ÎÞ
+  * @brief æ˜¾ç¤ºæ—¥æœŸè®¾ç½®UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_SetDate_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);
-	OLED_Printf(0,16,OLED_8X16,"Äê:%4d",MyRTC_Time[0]);		//ÏÔÊ¾Äê
-	OLED_Printf(0,32,OLED_8X16,"ÔÂ:%2d",MyRTC_Time[1]);		//ÏÔÊ¾ÔÂ
-	OLED_Printf(0,48,OLED_8X16,"ÈÕ:%2d",MyRTC_Time[2]);      //ÏÔÊ¾ÈÕ
+	OLED_Printf(0,16,OLED_8X16,"%4d",MyRTC_Time[0]);		//æ˜¾ç¤ºå¹´
+	OLED_Printf(0,32,OLED_8X16,"%2d",MyRTC_Time[1]);		//æ˜¾ç¤ºæœˆ
+	OLED_Printf(0,48,OLED_8X16,"%2d",MyRTC_Time[2]);      //æ˜¾ç¤ºæ—¥
 }
 
 /**
-  * @brief ÏÔÊ¾Ê±¼äÉèÖÃUI
-  * @param  ÎÞ
-  * @retval ÎÞ
+  * @brief æ˜¾ç¤ºæ—¶é—´è®¾ç½®UI
+  * @param  æ— 
+  * @retval æ— 
   */
 void Show_SetTime_UI(void)
 {
-	OLED_Printf(0,0,OLED_8X16,"Ê±:%2d",MyRTC_Time[3]);		//ÏÔÊ¾Ê±
-	OLED_Printf(0,16,OLED_8X16,"·Ö:%2d",MyRTC_Time[4]);		//ÏÔÊ¾·Ö
-	OLED_Printf(0,32,OLED_8X16,"Ãë:%2d",MyRTC_Time[5]);       //ÏÔÊ¾Ãë
+	OLED_Printf(0,0,OLED_8X16,"%2d",MyRTC_Time[3]);		//æ˜¾ç¤ºæ—¶
+	OLED_Printf(0,16,OLED_8X16,"%2d",MyRTC_Time[4]);		//æ˜¾ç¤ºåˆ†
+	OLED_Printf(0,32,OLED_8X16,"%2d",MyRTC_Time[5]);       //æ˜¾ç¤ºç§’
 
 }
 
 /**
-  * @brief ÐÞ¸ÄRTCÊ±¼äÖµ
-  * @param  i    Ê±¼äÊý×éË÷Òý£º0-Äê 1-ÔÂ 2-ÈÕ 3-Ê± 4-·Ö 5-Ãë
-  * @param  flag ÐÞ¸Ä·½Ïò£º0-¼õ1 1-¼Ó1
-  * @retval ÎÞ
+  * @brief ä¿®æ”¹RTCæ—¶é—´å€¼
+  * @param  i    æ—¶é—´æ•°ç»„ç´¢å¼•ï¼š0-å¹´ 1-æœˆ 2-æ—¥ 3-æ—¶ 4-åˆ† 5-ç§’
+  * @param  flag ä¿®æ”¹æ–¹å‘ï¼š0-å‡1 1-åŠ 1
+  * @retval æ— 
   */
 void ChangeRTC_Time(uint8_t i,uint8_t flag)
 {
@@ -61,358 +61,5 @@ void ChangeRTC_Time(uint8_t i,uint8_t flag)
 	{
 		MyRTC_Time[i]++;
 	}
-	MyRTC_SetTime(); 				//°Ñ¸üÐÂºóµÄÊ±¼äÖµ´Ó½á¹¹ÌåÖØÐÂË¢ÐÂµ½RTCÓ²¼þµçÂ·ÖÐ
-}
-
-static uint8_t KeyNum;             /* ÔÝ´æ°´¼ü¼üÖµ */
-
-/**
-  * @brief ÉèÖÃÄê·Ý
-  * @retval 0-·µ»Ø
-  * @note  Key1¼ÓÄê·Ý Key2¼õÄê·Ý Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Year(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1) //Key1: add Year
-		{
-			ChangeRTC_Time(0,1);
-			KeyNum = 0;
-		}
-
-		else if(KeyNum == 2) //Key2: minus Year
-		{
-			ChangeRTC_Time(0,0);
-			KeyNum = 0;
-		}
-
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetDate_UI();
-		OLED_ReverseArea(24,16,32,16);
-		OLED_Update();
-	}
-}
-
-/**
-  * @brief ÉèÖÃÔÂ·Ý
-  * @retval 0-·µ»Ø
-  * @note  Key1¼ÓÔÂ·Ý Key2¼õÔÂ·Ý Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Month(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1: add Month
-		{
-			ChangeRTC_Time(1,1);
-			if(MyRTC_Time[1] > 12)
-			{
-				MyRTC_Time[1] = 1;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 2) //Key2: minus Month
-		{
-			ChangeRTC_Time(1,0);
-			if(MyRTC_Time[1] <= 0)
-			{
-				MyRTC_Time[1] = 12;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetDate_UI();
-		OLED_ReverseArea(24,32,16,16);
-		OLED_Update();
-
-	}
-}
-
-/**
-  * @brief ÉèÖÃÈÕÆÚ
-  * @retval 0-·µ»Ø
-  * @note  Key1¼ÓÈÕÆÚ Key2¼õÈÕÆÚ Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Day(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1: add Day
-		{
-			ChangeRTC_Time(2,1);
-			if(MyRTC_Time[2] >= 32)
-			{
-				MyRTC_Time[2] = 1;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 2)   //Key2: minus Day
-		{
-			ChangeRTC_Time(2,0);
-			if(MyRTC_Time[2] <= 0)
-			{
-				MyRTC_Time[2] = 31;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetDate_UI();
-		OLED_ReverseArea(24,48,16,16);
-		OLED_Update();
-	}
-}
-
-/**
-  * @brief ÉèÖÃÐ¡Ê±
-  * @retval 0-·µ»Ø
-  * @note  Key1¼ÓÐ¡Ê± Key2¼õÐ¡Ê± Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Hour(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1: add Hour
-		{
-            ChangeRTC_Time(3,1);
-            if(MyRTC_Time[3] >= 24)
-            {
-                MyRTC_Time[3] = 0;
-				MyRTC_SetTime();
-            }
-		}
-		else if(KeyNum == 2)    //Key2: minus Hour
-		{
-			ChangeRTC_Time(3,0);
-			if(MyRTC_Time[3] < 0)
-			{
-				MyRTC_Time[3] = 23;
-				MyRTC_SetTime();
-			}
-		}
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		/*ÎÞ°´¼üÊäÈëÊ±ÏÔÊ¾Ê±¼äÉèÖÃÒ³Ãæ²¢µÈ´ý°´¼üÊäÈë*/
-		Show_SetTime_UI();
-		OLED_ReverseArea(24,0,16,16);
-		OLED_Update();
-
-    }
-
-}
-
-/**
-  * @brief ÉèÖÃ·ÖÖÓ
-  * @retval 0-·µ»Ø
-  * @note  Key1¼Ó·ÖÖÓ Key2¼õ·ÖÖÓ Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Min(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)     //Key1: add Min
-		{
-            ChangeRTC_Time(4,1);
-            if(MyRTC_Time[4] >= 60)
-            {
-                MyRTC_Time[4] = 0;
-				MyRTC_SetTime();
-            }
-		}
-
-		else if(KeyNum == 2)    //Key2: minus Min
-		{
-			ChangeRTC_Time(4,0);
-			if(MyRTC_Time[4] < 0)
-			{
-				MyRTC_Time[4] = 59;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetTime_UI();
-		OLED_ReverseArea(24,16,16,16);
-		OLED_Update();
-
-	}
-}
-
-/**
-  * @brief ÉèÖÃÃëÖÓ
-  * @retval 0-·µ»Ø
-  * @note  Key1¼ÓÃëÖÓ Key2¼õÃëÖÓ Key3È·ÈÏ²¢ÍË³ö
-  */
-int Set_Sec(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 1)         //Key1: add Sec
-		{
-            ChangeRTC_Time(5,1);
-            if(MyRTC_Time[5] >= 60)
-            {
-                MyRTC_Time[5] = 0;
-				MyRTC_SetTime();
-            }
-		}
-
-		else if(KeyNum == 2)        //Key2: minus Sec
-		{
-			ChangeRTC_Time(5,0);
-			if(MyRTC_Time[5] < 0)
-			{
-				MyRTC_Time[5] = 59;
-				MyRTC_SetTime();
-			}
-		}
-
-		else if(KeyNum == 3) //Key3: save and quit
-		{
-			return 0;
-		}
-
-		Show_SetTime_UI();
-		OLED_ReverseArea(24,32,16,16);
-		OLED_Update();
-
-    }
-}
-
-
-uint8_t Key_CursorFlag = 1;         /* ÈÕÆÚÊ±¼äÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-Äê 3-ÔÂ 4-ÈÕ 5-Ê± 6-·Ö 7-Ãë */
-
-/**
-  * @brief ÈÕÆÚÊ±¼äÉèÖÃÖ÷Á÷³Ì
-  * @retval 0-·µ»Ø
-  * @note  ´¦ÀíÈÕÆÚÊ±¼äÉèÖÃµÄÒ³ÃæÌø×ªºÍ¹¦ÄÜÑ¡Ôñ
-  */
-int SetTime_mainprocess(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		uint8_t Key_FuncFlag = 0;
-		if(KeyNum == 1)       //ÉÏ·­¼ü
-		{
-			Key_CursorFlag++;
-			if(Key_CursorFlag > 7)
-			{
-				Key_CursorFlag = 1;
-			}
-		}
-		else if(KeyNum == 2)  //ÏÂ·­¼ü
-		{
-			Key_CursorFlag--;
-			if(Key_CursorFlag <= 0)
-			{
-				Key_CursorFlag = 7;
-			}
-		}
-		else if(KeyNum == 3)  //È·ÈÏ
-		{
-			//OLED_Clear();
-			//OLED_Update();
-			Key_FuncFlag = Key_CursorFlag;
-		}
-
-		/*******ÈÕÆÚÊ±¼äÉèÖÃÒ³ÃæÌø×ª¹¦ÄÜ´¦Àí*******/
-		if(Key_FuncFlag == 1)
-		{
-			Key_FuncFlag = 0;
-			return 0;
-		}
-		else if(Key_FuncFlag == 2){Set_Year();}
-		else if(Key_FuncFlag == 3){Set_Month();}
-		else if(Key_FuncFlag == 4){Set_Day();}
-		else if(Key_FuncFlag == 5){Set_Hour();}
-		else if(Key_FuncFlag == 6){Set_Min();}
-		else if(Key_FuncFlag == 7){Set_Sec();}
-		else{;}
-
-		/***********¹â±êÑ¡ÔñµÄÎ»ÖÃ*********/
-		switch(Key_CursorFlag)
-		{
-			case 1:                     //[·µ»Ø]
-				OLED_Clear();
-				Show_SetDate_UI();
-				OLED_ReverseArea(0,0,16,16);
-				OLED_Update();
-			    break;
-            case 2:                     //Äê
-                OLED_Clear();
-				Show_SetDate_UI();
-				OLED_ReverseArea(24,16,32,16);
-				OLED_Update();
-			    break;
-            case 3:                     //ÔÂ
-                OLED_Clear();
-				Show_SetDate_UI();
-				OLED_ReverseArea(24,32,16,16);
-				OLED_Update();
-			    break;
-            case 4:                     //ÈÕ
-                OLED_Clear();
-				Show_SetDate_UI();
-				OLED_ReverseArea(24,48,16,16);
-				OLED_Update();
-			    break;
-            case 5:                     //Ê±
-                OLED_Clear();
-				Show_SetTime_UI();
-				OLED_ReverseArea(24,0,16,16);
-				OLED_Update();
-			    break;
-            case 6:                     //·Ö
-                OLED_Clear();
-				Show_SetTime_UI();
-				OLED_ReverseArea(24,16,16,16);
-				OLED_Update();
-			    break;
-            case 7:                     //Ãë
-                OLED_Clear();
-				Show_SetTime_UI();
-				OLED_ReverseArea(24,32,16,16);
-				OLED_Update();
-			    break;
-            default:
-                break;
-		}
-	}
+	MyRTC_SetTime(); 				//æŠŠæ›´æ–°åŽçš„æ—¶é—´å€¼ä»Žç»“æž„ä½“åˆ·æ–°åˆ°RTCç¡¬ä»¶ç”µè·¯
 }

@@ -25,6 +25,8 @@
 - [Phase 1 遇到的问题](#六phase-1-遇到的问题与解决方案)
 - [Phase 2 实施记录](#六续phase-2-实施记录--创建-task_input)
 - [结论](#七结论)
+- [问题整理归纳](#八问题整理归纳)
+  - [问题 5：ULONG_MAX 未定义](#问题-5x-tasknotifywait-中-ulong_max-未定义)
 
 ---
 
@@ -1066,6 +1068,63 @@ Phase 2 确认采用**手动编写原生 FreeRTOS API**，不使用 CubeMX CMSIS
 > **如果当前功能稳定且无新增需求，可以不急于移植。** 问题十五修复后，帧率控制 + `__WFI()` 已解决主要功耗问题（预估续航改善约 3 倍）。
 >
 > **如果计划添加多线程功能（如 BLE 通信、传感器数据后台采集），建议移植。** 推荐按 Phase 1→5 顺序逐步实施。
+
+---
+
+## 八、问题整理归纳
+
+> 本章汇总 FreeRTOS 移植过程中遇到并解决的问题，便于查阅和回溯。
+
+---
+
+### 问题 5：`xTaskNotifyWait()` 中 `ULONG_MAX` 未定义
+
+**发现阶段：** Phase 3 实施 — Task_UI 编译验证
+
+**现象：**
+
+Keil MDK ARMCC V5.06 编译时报错：
+
+```
+../Core/Src/freertos.c(194): error: #20: identifier "ULONG_MAX" is undefined
+    if (xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(FRAME_PERIOD_MS)) == pdTRUE)
+```
+
+**涉及文件：** [freertos.c](../SmartWatch_HAL/HAL/Core/Src/freertos.c) 第 194 行
+
+**根因分析：**
+
+`ULONG_MAX` 定义在标准 C 头文件 `<limits.h>` 中（展开为 `0xffffffffUL`），而 `freertos.c` 未包含该头文件。当前文件仅包含以下头文件：
+
+```c
+#include "FreeRTOS.h"
+#include "task.h"
+#include "main.h"
+```
+
+其中 `task.h` 虽在注释中提及 `ULONG_MAX`（见 `/Include/task.h:1907`），但并未主动包含 `<limits.h>`，仅在其注释中说明：
+
+> *"Setting ulBitsToClearOnExit to ULONG_MAX (if limits.h is included) or 0xffffffffUL"*
+
+——也就是说 FreeRTOS 预期使用者自行包含 `<limits.h>` 或直接使用字面值 `0xffffffffUL`。
+
+**解决方案：**
+
+将 `ULONG_MAX` 替换为字面值 `0xffffffffUL`，避免新增头文件依赖：
+
+```diff
+-    if (xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(FRAME_PERIOD_MS)) == pdTRUE)
++    if (xTaskNotifyWait(0, 0xffffffffUL, &key, pdMS_TO_TICKS(FRAME_PERIOD_MS)) == pdTRUE)
+```
+
+| 方案 | 优点 | 缺点 | 选择 |
+|------|------|------|------|
+| 添加 `#include <limits.h>` | 语义清晰，自文档化 | 增加头文件依赖，全局生效 | ❌ |
+| 替换为 `0xffffffffUL` | 零额外依赖，FreeRTOS 文档推荐做法 | 字面值可读性略低 | ✅ |
+
+**验证：** ✅ 编译通过，0 Error，0 Warning
+
+**关联文档：** FreeRTOS `task.h` 第 1907 行注释明确将 `0xffffffffUL` 列为不包含 `limits.h` 时的替代值。
 
 ---
 

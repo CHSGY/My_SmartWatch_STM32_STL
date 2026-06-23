@@ -1,0 +1,17 @@
+# Git attributes — ensure proper encoding and line endings
+# Created for Phase 3: FreeRTOS Task_UI state machine migration
+
+# C source/header files: UTF-8
+*.c     text  charset=utf-8
+*.h     text  charset=utf-8
+
+# Documentation: UTF-8
+*.md    text  charset=utf-8  diff=markdown
+
+# Binary files
+*.axf   binary
+*.hex   binary
+*.o     binary
+*.uvprojx binary
+*.uvoptx binary
+*.ioc   binary

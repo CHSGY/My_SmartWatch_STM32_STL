@@ -104,6 +104,9 @@ uint8_t Key_HasPending(void);
 /* 按键处理任务句柄，由 main.c 创建任务时赋值，ISR 用于通知 */
 extern TaskHandle_t Task_Input_Handle;
 
+/* Task_UI 任务句柄，由 main.c 创建任务时赋值，Task_Input 用于转发按键 */
+extern TaskHandle_t Task_UI_Handle;
+
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */

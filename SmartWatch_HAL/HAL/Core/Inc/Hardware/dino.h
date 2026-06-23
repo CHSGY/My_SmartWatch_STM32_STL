@@ -55,6 +55,9 @@
 #define SCORE_DISPLAY_X         96      /* 分数显示 X 坐标 */
 #define SCORE_DISPLAY_Y         0       /* 分数显示 Y 坐标 */
 
+/** @brief 恐龙跳跃请求标志（由 Task_UI 的 UI_ProcessKey 设置，Show_Dino 消费） */
+extern uint8_t Dino_JumpRequest;
+
 /**
   * @brief 游戏初始化
   */
@@ -91,10 +94,11 @@ void Show_Cloud(void);
 void Show_Dino(void);
 
 /**
-  * @brief 游戏主循环动画
-  * @retval 0-游戏结束返回
+  * @brief 游戏单帧渲染（由 Task_UI 每帧调用）
+  * @retval 0-继续游戏 1-游戏结束
+  * @note  替代原 Dino_game_Animation() 的 while(1) 循环
   */
-uint8_t Dino_game_Animation(void);
+uint8_t Dino_RenderFrame(void);
 
 /**
   * @brief 显示游戏结束画面

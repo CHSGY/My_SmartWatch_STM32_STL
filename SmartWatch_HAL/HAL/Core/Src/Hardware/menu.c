@@ -1,15 +1,13 @@
 /**
   * @file           : menu.c
-  * @brief          : Ö÷²Ëµ¥¼°¹¦ÄÜÄ£¿é£¨HAL¿â°æ±¾£©
+  * @brief          : ä¸»èœå•åŠåŠŸèƒ½æ¨¡å—ï¼ˆHALåº“ç‰ˆæœ¬ / FreeRTOS Task_UI çŠ¶æ€æœºï¼‰
   * @author         : CHSGY
   * @date           : 2026-06-07
   *
-  * @note           : ´Ó±ê×¼¿âmenu.cÒÆÖ²£¬Ö÷ÒªĞŞ¸Äµã£º
-  *                   1. Í·ÎÄ¼ş£ºstm32f10x.h ¡ú main.h, Delay.h ¡ú delay.h
-  *                   2. ÑÓÊ±º¯Êı£ºDelay_ms() ¡ú delay_ms()
-  *                   3. µçÔ´¿ØÖÆ£ºGPIOÖ±½Ó²Ù×÷ ¡ú powerÄ£¿é(Power_IsRunning/Power_Shutdown)
-  *                   4. ADC³õÊ¼»¯£ºAD_Init() ²»ÔÙĞèÒª£¨CubeMXÒÑÍê³ÉÅäÖÃ£©
-  *                   5. ÔİÎ´Ç¨ÒÆµÄÄ£¿é(SetTime/dino)ÒÔstubĞÎÊ½Ìá¹©£¬´ıºóĞøÇ¨ÒÆºóÌæ»»
+  * @note           : Phase 3 æ”¹é€ ï¼š9 ä¸ª while(1) ç‹¬å é¡µé¢å‡½æ•°æ”¹ä¸º Task_UI çŠ¶æ€æœºã€‚
+  *                   - Render_*() å‡½æ•°ï¼šæ¯å¸§ç»˜åˆ¶ï¼ˆç”± Task_UI è°ƒç”¨ï¼Œä¸åŒ…å« OLED_Clear/Updateï¼‰
+  *                   - UI_ProcessKey()ï¼šæŒ‰é”®â†’çŠ¶æ€è½¬æ¢ï¼ˆç”± Task_UI è°ƒç”¨ï¼‰
+  *                   - Task_UI ä¸»å¾ªç¯åœ¨ freertos.c ä¸­
   */
 
 #include "main.h"
@@ -22,22 +20,26 @@
 #include "Hardware/MPU6050.h"
 #include "Hardware/menu.h"
 #include "Hardware/dino.h"
+#include "Hardware/SetTime.h"
 #include "power.h"
 #include <math.h>
 
-/********************º¯ÊıÉùÃ÷************************/
+/********************å…¨å±€å˜é‡************************/
 
-/*************************Ê×Ò³Ê±ÖÓ½çÃæ**********************************/
+/* Task_UI çŠ¶æ€æœºå…¨å±€å˜é‡ */
+volatile PageID_t g_CurrentPage = PAGE_CLOCK;
+TaskHandle_t Task_UI_Handle = NULL;
 
-/* µç³ØµçÁ¿»º´æ£¬±ÜÃâÃ¿Ö¡¶¼×öADC²ÉÑù */
+/*************************ç”µæ± æ˜¾ç¤º**************************/
+
+/* ç”µæ± æ˜¾ç¤ºç¼“å­˜ï¼Œé¿å…æ¯å¸§é‡å¤ADCé‡‡æ · */
 static uint16_t cached_AD_Value = 0;
 static uint8_t Battery_Refresh_Cnt = 0;
-static uint32_t last_draw_tick = 0;	/* Ö¡ÂÊ¿ØÖÆ£¬½µµÍOLEDË¢ĞÂ¹¦ºÄ */
 
 /*
-* @brief µç³ØµçÁ¿ÏÔÊ¾UI
-* @note  ÓÅ»¯£ºÃ¿50Ö¡²Å×öÒ»´ÎADC²ÉÑù£¨16´Î¾ùÖµ£©£¬ÆäÓàÖ¡Ê¹ÓÃ»º´æÖµ
-*        Ô­·½°¸Ã¿Ö¡3000´Î²ÉÑù£¬×èÈûÔ¼20ms£»ÓÅ»¯ºóÔ¼1ms
+* @brief ç”µæ± ç”µé‡æ˜¾ç¤ºUI
+* @note  ä¼˜åŒ–ï¼šæ¯50å¸§é‡‡æ ·ä¸€æ¬¡ADCï¼ˆ16æ¬¡å–å‡å€¼ï¼‰ï¼Œå…¶ä½™å¸§ä½¿ç”¨ç¼“å­˜å€¼
+*        åŸæ¯å¸§3000æ¬¡é‡‡æ ·è€—æ—¶çº¦20msï¼Œä¼˜åŒ–åçº¦1ms
 */
 void Battery_Show_UI(void)
 {
@@ -46,10 +48,10 @@ void Battery_Show_UI(void)
 
 	Battery_Refresh_Cnt++;
 	if (Battery_Refresh_Cnt < BATTERY_REFRESH_FRAMES) {
-		/* Î´µ½²ÉÑùÖÜÆÚ£¬Ê¹ÓÃ»º´æÖµÖ±½ÓÏÔÊ¾ */
+		/* æœªåˆ°é‡‡æ ·å‘¨æœŸï¼Œä½¿ç”¨ç¼“å­˜å€¼ç›´æ¥æ˜¾ç¤º */
 		AD_Value = cached_AD_Value;
 	} else {
-		/* Ã¿50Ö¡²ÉÑùÒ»´Î£¬È¡16´Î¾ùÖµ */
+		/* æ¯50å¸§é‡‡æ ·ä¸€æ¬¡ï¼Œå–16æ¬¡å‡å€¼ */
 		Battery_Refresh_Cnt = 0;
 		uint32_t sum = 0;
 		for (int i = 0; i < BATTERY_ADC_SAMPLES; i++) {
@@ -84,268 +86,112 @@ void Battery_Show_UI(void)
 		OLED_ClearArea(BATTERY_BAR_X + Battery_Capacity/10, BATTERY_BAR_Y, BATTERY_BAR_W - Battery_Capacity/10, BATTERY_BAR_H);
 		OLED_ClearArea(82,4,6,8);
 	}
-	else	//¸öÎ»ÊıµçÁ¿²»ÏÔÊ¾
+	else	//ä¸ªä½æ•°æ—¶æ¸…ç©ºç”µé‡æ¡
 	{
 		OLED_ShowImage(BATTERY_ICON_X, BATTERY_ICON_Y, BATTERY_ICON_W, BATTERY_ICON_H, Battery);
-		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);	//µç³ØµçÁ¿UIÇå¿Õ
-		OLED_ClearArea(82,4,12,8);			//¸öÎ»Ê®Î»Êı²»ÏÔÊ¾ÇøÓò
+		OLED_ClearArea(BATTERY_BAR_X, BATTERY_BAR_Y, BATTERY_BAR_W, BATTERY_BAR_H);
+		OLED_ClearArea(82,4,12,8);
 	}
 }
 
 
-//Ê×Ò³ÓÃ»§½çÃæ
+/*************************é¦–é¡µæ—¶é’Ÿ UI ç»˜åˆ¶**************************/
+
 void Show_Clock_UI(void)
 {
-	MyRTC_ReadTime();	//¶ÁÈ¡tmÈÕÆÚÊ±¼ä½á¹¹ÌåÊ±ÖÓÊı¾İ
-	OLED_Printf(CLOCK_DATE_X, CLOCK_DATE_Y, OLED_6X8, "%d-%d-%d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);					//ÏÔÊ¾Äê-ÔÂ-ÈÕ
-	OLED_Printf(CLOCK_TIME_X, CLOCK_TIME_Y, OLED_12X24, "%02d:%02d:%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);		//ÏÔÊ¾Ê±:·Ö:Ãë
-	OLED_ShowString(CLOCK_MENU_TEXT_X, CLOCK_MENU_TEXT_Y, "²Ëµ¥", OLED_8X16);
-	OLED_ShowString(CLOCK_SET_TEXT_X, CLOCK_SET_TEXT_Y, "ÉèÖÃ", OLED_8X16);
+	MyRTC_ReadTime();
+	OLED_Printf(CLOCK_DATE_X, CLOCK_DATE_Y, OLED_6X8, "%d-%d-%d", MyRTC_Time[0], MyRTC_Time[1], MyRTC_Time[2]);
+	OLED_Printf(CLOCK_TIME_X, CLOCK_TIME_Y, OLED_12X24, "%02d:%02d:%02d", MyRTC_Time[3], MyRTC_Time[4], MyRTC_Time[5]);
+	OLED_ShowString(CLOCK_MENU_TEXT_X, CLOCK_MENU_TEXT_Y, "Menu", OLED_8X16);
+	OLED_ShowString(CLOCK_SET_TEXT_X, CLOCK_SET_TEXT_Y, "Set", OLED_8X16);
 	Battery_Show_UI();
 }
 
-uint8_t Clockmoveflag = 1;	/* Ê×Ò³Ê±ÖÓÒ³Ãæ¹â±êÎ»ÖÃ£¬1:²Ëµ¥Ñ¡Ïî 2:ÉèÖÃÑ¡Ïî */
-static uint8_t KeyNum;            /* ÁÙÊ±°´¼ü¼üÂë±äÁ¿ */
 
-//°´¼ü¿ØÖÆÊ±ÖÓÒ³Ãæ¹â±êÒÆ¶¯Âß¼­ÊµÏÖ
-uint8_t First_Page_Clock(void)
-{
-	while(1) 					//Get key's number continuely
-	{
-		KeyNum = Key_GetNum(); 	//Get Key Number
-		if(KeyNum == 1) 		//Key1: last item
-		{
-			//press key1 to move last one 
-			Clockmoveflag --;
-			if(Clockmoveflag <= 0) 
-			{
-				Clockmoveflag = 2; //cursor move to second item [ÉèÖÃ]
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) 	//Key2: next item
-		{
-			Clockmoveflag ++;
-			if(Clockmoveflag >= 3)
-			{
-				Clockmoveflag = 1; //cursor move to first item [²Ëµ¥]
-			}
-		}
-		else if(KeyNum == 3) 	//Key3: short press to [È·ÈÏ]
-		{
-			OLED_Clear();  			//Clear Screen
-			OLED_Update(); 			//ReFlash Screen
-			return Clockmoveflag; //return position of cursor
-		}
-		else if(KeyNum == 4) 	//Long Press Key3 ¡ú µçÔ´¿ØÖÆ
-		{
-			/**
-			  * @note HAL°æ±¾£ºµçÔ´¿ØÖÆÓÉpowerÄ£¿é¹ÜÀí
-			  *   Ô­STD´úÂëÊ¹ÓÃGPIOÖ±½Ó²Ù×÷PB12/PB13
-			  *   ÏÖ¸ÄÎªÅĞ¶ÏÔËĞĞ×´Ì¬ºóÖ´ĞĞ¹Ø»ú
-			  *   Ô­Âß¼­ÖĞµÄ"ÇĞ»»¿ª»ú"ÔÚÊµ¼ÊÓ²¼şÖĞ²»¿ÉÊµÏÖ£¨¹Ø»úºóMCU¶ÏµçÎŞ·¨»Ö¸´£©
-			  *   Òò´Ë¼ò»¯Îª£º³¤°´ ¡ú ¹Ø»ú
-			  */
-			 //ÅĞ¶ÏÊÇ·ñÔËĞĞÖĞ
-			if(POWER_IsRunning())
-			{
-				POWER_Shutdown();	//¹Ø»ú
-			}
-			else
-			{
-				POWER_Boot();	//¿ª»ú
-			}
-		}
+/*************************è®¾ç½®é¡µé¢ UI ç»˜åˆ¶**************************/
 
-		/******Key Function Control******/
-		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-			switch(Clockmoveflag)
-			{
-				case 1: //[²Ëµ¥]
-					Show_Clock_UI();
-					OLED_ReverseArea(0,48,32,16);
-					OLED_Update();
-					break;
-				case 2: //[ÉèÖÃ]
-					Show_Clock_UI();
-					OLED_ReverseArea(96,48,32,16);
-					OLED_Update();
-					break;
-				default:
-					break;
-			}		
-		}
-
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-	}
-}
-
-
-
-/*************************ÉèÖÃÒ³Ãæ************************************/
-uint8_t ClockUI_Move_Flag;         /* ÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ±êÖ¾ */
-
-/**
-  * @brief ÏÔÊ¾ÉèÖÃÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void Show_Setting_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);				//ÏÔÊ¾·µ»ØÍ¼±ê
-	OLED_ShowString(0,16,"ÈÕÆÚÊ±¼äÉèÖÃ",OLED_8X16);	//ÏÔÊ¾[ÈÕÆÚÊ±¼äÉèÖÃ]
-}
-
-uint8_t SettingFlag = 1; 		//°´¼ü¹â±ê³õÊ¼Î»ÖÃÔÚ[·µ»Ø]Í¼±ê´¦
-
-uint8_t SettingPage(void)
-{
-	uint8_t Temp_SettingFlag = 0;		//·µ»ØÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ
-	while(1) //Get key's number continuely
-	{
-		KeyNum = Key_GetNum(); //Get Key Number
-		if(KeyNum == 1) //Key1: last item
-		{
-			//press key1 to move last one 
-			SettingFlag--;
-			if(SettingFlag <= 0) 
-			{
-				SettingFlag = 2; //cursor move to second item [ÈÕÆÚÊ±¼äÉèÖÃ]
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) //Key2: next item
-		{
-			SettingFlag ++;
-			if(SettingFlag >= 3)
-			{
-				SettingFlag = 1; //cursor move to first item [·µ»Ø]
-			}
-		}
-		else if(KeyNum == 3) //Key3: press to confirmation
-		{
-			OLED_Clear();  //Clear Screen
-			OLED_Update(); //ReFlash Screen
-			Temp_SettingFlag = SettingFlag;
-		}
-
-		if(Temp_SettingFlag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
-		{
-			Temp_SettingFlag = 0;
-			OLED_Clear();
-			return 0;
-		}
-		else if(Temp_SettingFlag == 2)			//¹â±êÎ»ÖÃ£º¡¾ÈÕÆÚÊ±¼äÉèÖÃ¡¿
-		{
-			Temp_SettingFlag = 0;
-			SetTime_mainprocess();				//µ÷ÓÃ[ÉèÖÃÈÕÆÚÊ±¼ä]º¯Êı£¨stub£¬´ıÇ¨ÒÆ£©
-			OLED_Clear();
-		}
-
-		/******Background_Color of Function selection******/
-				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-switch(SettingFlag)
-		{
-			case 1: //[·µ»Ø]
-				Show_Setting_UI();
-				OLED_ReverseArea(0,0,16,16);
-				OLED_Update();
-				break;
-			case 2: //[ÈÕÆÚÊ±¼äÉèÖÃ]
-				Show_Setting_UI();
-				OLED_ReverseArea(0,16,96,16);
-				OLED_Update();
-				break;
-		}		}
-
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-}
+	OLED_ShowImage(0,0,16,16,GoBack);
+	OLED_ShowString(0,16,"Set DateTime",OLED_8X16);
 }
 
 
+/********************************èœå•é¡µé¢ åŠ¨ç”»*******************************/
 
-/********************************²Ëµ¥Ò³Ãæ************************************/
-
-uint8_t MenuFlag = 2; 		//²Ëµ¥Í¼±êÎ»ÖÃ±êÖ¾Î»
-
-uint8_t Pre_item;			//µ±Ç°Ïî
-uint8_t Target_item;		//Ä¿±êÏîÄ¿
-uint8_t Pre_x;				//ÉÏÒ»´ÎxµÄ×ø±ê
-uint8_t move_step = MENU_SLIDE_STEP;		//Í¼±êÒÆ¶¯²½³¤
-uint8_t move_stateFlag = 1;		//1:¿ªÊ¼ÒÆ¶¯£¬0:Í£Ö¹ÒÆ¶¯
+uint8_t MenuFlag = 2;
+uint8_t Pre_item, Target_item;
+uint8_t Pre_x;
+uint8_t move_step = MENU_SLIDE_STEP;
+uint8_t move_stateFlag = 1;
+static uint8_t Direct_Flag = 2;     /* å›¾æ ‡ç§»åŠ¨æ–¹å‘ï¼š1=ä¸Šä¸€ä¸ª 2=ä¸‹ä¸€ä¸ª */
 
 /*
-*  ²Ëµ¥»¬¶¯¶¯»­ÏÔÊ¾º¯Êı
+*  èœå•å›¾æ ‡æ»‘åŠ¨åŠ¨ç”»ï¼ˆä»…ç»˜åˆ¶ï¼Œä¸åš Clear/Update â€” ç”± Task_UI ç»Ÿä¸€å¤„ç†ï¼‰
 */
 void Menu_Animation(void)
 {
-	OLED_ClearArea(0, MENU_FRAME_Y - 2, 128, 48);
-	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);			//²Ëµ¥Ñ¡Ôñ¿ò
-
-	//²Ëµ¥ÕûÌå×óÒÆ
+	/* èœå•å‘å³æ»‘åŠ¨ */
 	if(Pre_item < Target_item)
 	{
 		Pre_x -= move_step;
-		if(Pre_x == 0)				//Ç°»ØÍ¼±êÒÆ¶¯ÖÁx=0´¦
+		if(Pre_x == 0)
 		{
-			Pre_item++;				//²Ëµ¥ÒÆ¶¯µ½ÏÂÒ»Ïî
-			Pre_x = MENU_ICON_BASE_X;				//Ç°»Ø×ø±ê¸üĞÂÎªx=48
-			move_stateFlag = 0;		//Í£Ö¹ÒÆ¶¯
+			Pre_item++;
+			Pre_x = MENU_ICON_BASE_X;
+			move_stateFlag = 0;
 		}
 	}
 
-	//²Ëµ¥ÕûÌåÓÒÒÆ
+	/* èœå•å‘å·¦æ»‘åŠ¨ */
 	if(Pre_item > Target_item)
 	{
 		Pre_x += move_step;
-		if(Pre_x == MENU_ICON_BASE_X * 2)			//Ç°»ØÍ¼±êÒÆ¶¯ÖÁx=96´¦
+		if(Pre_x == MENU_ICON_BASE_X * 2)
 		{
-			Pre_item--;			//²Ëµ¥ÒÆ¶¯µ½ÉÏÒ»Ïî
-			Pre_x = MENU_ICON_BASE_X;			//Ç°»Ø×ø±ê¸üĞÂÎªx=48
-			move_stateFlag = 0;	//Í£Ö¹ÒÆ¶¯
+			Pre_item--;
+			Pre_x = MENU_ICON_BASE_X;
+			move_stateFlag = 0;
 		}
 	}
 
-	if(Pre_item >= 1)			//µÚÒ»Ïî¼°ÒÔºóµÄ²Ëµ¥Ñ¡Ïî
+	/* ç»˜åˆ¶é€‰æ‹©æ¡† */
+	OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);
+
+	if(Pre_item >= 1)
 	{
-		OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//ÏÔÊ¾Ç°Ò»¸ö²Ëµ¥Í¼±ê
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);
 	}
-	if(Pre_item >= 2)			//µÚ¶şÏî¼°ÒÔºóµÄ²Ëµ¥Ñ¡Ïî
+	if(Pre_item >= 2)
 	{
-		OLED_ShowImage(Pre_x - MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-2]);	//ÏÔÊ¾ÉÏÉÏ¸öÍ¼±ê
+		OLED_ShowImage(Pre_x - MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-2]);
 	}
 
-	/*±£Ö¤Í¼±ê»¬¶¯µÄÁ¬ĞøĞÔ*/
-	OLED_ShowImage(Pre_x, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//ÏÔÊ¾Ñ¡ÖĞµÄ²Ëµ¥Í¼±ê
-	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚÒ»¸öÍ¼±ê
-	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚ¶ş¸öÍ¼±ê
-
-	OLED_UpdateArea(0, MENU_FRAME_Y - 2, 128, 48);
+	OLED_ShowImage(Pre_x, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);
+	OLED_ShowImage(Pre_x + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+2]);
 }
 
+/*
+*  èœå•è¿›åœºåŠ¨ç”»ï¼ˆç¡®è®¤é€‰æ‹©åæ’­æ”¾ï¼Œé˜»å¡å¼6å¸§åŠ¨ç”»ï¼‰
+*/
 void MenuToFunction_Animation(void)
 {
 	for(uint8_t i=0; i<=MENU_ENTER_FRAMES; i++)
 	{
-		OLED_ClearArea(0, MENU_ICON_Y, 128, 48);				//ÇåÆÁ
-		if(Pre_item >= 1)			//µ±Ç°Ñ¡Ïî¼°ÒÔºóµÄ²Ëµ¥Ñ¡ÏîÊ±
+		OLED_ClearArea(0, MENU_ICON_Y, 128, 48);
+		if(Pre_item >= 1)
 		{
-			/*±£Ö¤Í¼±ê»¬¶¯µÄÁ¬ĞøĞÔ*/
-			OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);	//
-			OLED_ShowImage(Pre_x, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);		//ÏÔÊ¾Ñ¡ÖĞµÄ²Ëµ¥Í¼±ê
-			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);	//ÏÔÊ¾Ñ¡ÖĞÍ¼±êºóµÚÒ»¸öÍ¼±ê
+			OLED_ShowImage(Pre_x - MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item-1]);
+			OLED_ShowImage(Pre_x, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item]);
+			OLED_ShowImage(Pre_x + MENU_ICON_SPACING, MENU_ICON_Y + i * MENU_ENTER_STEP, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[Pre_item+1]);
 		}
-
 		OLED_UpdateArea(0, MENU_ICON_Y, 128, 48);
 	}
 }
 
 /*
-*	ÉèÖÃ²Ëµ¥Ñ¡Ïî
+*	è®¾ç½®èœå•é€‰æ‹©ï¼ˆæ»‘åŠ¨åŠ¨ç”»å…¥å£ï¼‰
 */
 void Set_Selection(uint8_t move_flag, uint8_t pre_item, uint8_t target_item)
 {
@@ -358,164 +204,30 @@ void Set_Selection(uint8_t move_flag, uint8_t pre_item, uint8_t target_item)
 }
 
 
-/*
-*  ²Ëµ¥Ò³ÃæÍ¼±ê°´¼ü¿ØÖÆÂß¼­ÊµÏÖ
-*/
-uint8_t Menu_Page(void)
-{
-	uint8_t Temp_MenuFlag = 0;			//·µ»ØÉèÖÃÒ³Ãæ¹â±êÎ»ÖÃ
-	uint8_t Direct_Flag = 2;			//Í¼±êÒÆ¶¯·½Ïò 1£ºÉÏÒ»Ïî 2£ºÏÂÒ»Ïî
-	move_stateFlag = 1;
+/********************************ç§’è¡¨************************************/
 
-	while(1) //Get key's number continuely
-	{
+uint8_t StopClock_Flag = 1;
+uint8_t hour,min,sec;
+uint8_t start_timing_flag = 0;
 
-		KeyNum = Key_GetNum(); //Get Key Number
-		if(KeyNum == 1) //Key1: last item
-		{
-			//press key1 to move last one 
-			Direct_Flag = 1;		//ÉÏÒ»Ïî
-			move_stateFlag = 1;		//¿ªÊ¼ÒÆ¶¯
-			MenuFlag--;				//²Ëµ¥ÏîÏòÓÒ¹ö¶¯
-			if(MenuFlag <= 0) 
-			{
-				MenuFlag = MENU_CURSOR_MAX; 		//cursor move to [Ë®Æ½ÒÇ]
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) //Key2: next item
-		{
-			Direct_Flag = 2;		//ÏÂÒ»Ïî
-			move_stateFlag = 1;		//¿ªÊ¼ÒÆ¶¯
-			MenuFlag ++;			//²Ëµ¥ÏîÏò×ó¹ö¶¯
-			if(MenuFlag >= MENU_CURSOR_MAX + 1)
-			{
-				MenuFlag = MENU_CURSOR_MIN; 		//cursor move to [·µ»Ø]
-			}
-		}
-		else if(KeyNum == 3) 		//Key3: press to confirmation
-		{
-			Direct_Flag = 0;
-			OLED_Clear();  			//Clear Screen
-			OLED_Update(); 			//ReFlash Screen
-
-			Temp_MenuFlag = MenuFlag;
-		}
-
-		/*²Ëµ¥¹â±êÎ»ÖÃÓë¶ÔÓ¦¹¦ÄÜÌø×ª*/
-		if(Temp_MenuFlag == 1)				//¹â±êÎ»ÖÃ1£º¡¾·µ»Ø¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			OLED_Clear();
-			return 0;
-		}
-		else if(Temp_MenuFlag == 2)			//¹â±êÎ»ÖÃ2£º¡¾Ãë±í¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			StopClock();					//µ÷ÓÃ[Ãë±í]º¯Êı	
-			OLED_Clear();
-		}
-		else if(Temp_MenuFlag == 3)			//¹â±êÎ»ÖÃ3£º¡¾ÊÖµçÍ²¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			flashlight_Func();
-			OLED_Clear();
-		}
-		else if(Temp_MenuFlag == 4)			//¹â±êÎ»ÖÃ4£º¡¾MPU6050¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			MPU6050_Main();
-			OLED_Clear();
-		}
-		else if(Temp_MenuFlag == 5)			//¹â±êÎ»ÖÃ5£º¡¾ÓÎÏ·¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			Game();							//µ÷ÓÃÓÎÏ·£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
-			OLED_Clear();
-		}
-		else if(Temp_MenuFlag == 6)			//¹â±êÎ»ÖÃ6£º¡¾¶¯Ì¬±íÇé¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			Emoji_Func();
-			OLED_Clear();
-		}
-		else if(Temp_MenuFlag == 7)			//¹â±êÎ»ÖÃ7£º¡¾Ë®Æ½ÒÇ¡¿
-		{
-			Temp_MenuFlag = 0;
-			MenuToFunction_Animation();
-			Gradienter_Func();
-			OLED_Clear();
-		}
-		else
-		{
-			;
-		}
-
-				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-if(MenuFlag==1)								//²Ëµ¥Î»ÖÃ£º¡¾·µ»Ø¡¿
-		{
-			if(Direct_Flag == 1)					//ÉÏÒ»Ïî
-			{
-				Set_Selection(move_stateFlag,1,0);	
-			}
-			else if(Direct_Flag == 2)				//ÏÂÒ»Ïî
-			{
-				Set_Selection(move_stateFlag,0,0);
-			}
-			else
-			{
-				Menu_Animation();				//ÎŞ°´¼ü£¬½öÖØ»­
-			}
-		}
-		else
-		{
-			if(Direct_Flag == 1){Set_Selection(move_stateFlag,MenuFlag,MenuFlag-1);}
-			else if(Direct_Flag == 2){Set_Selection(move_stateFlag,MenuFlag-2,MenuFlag-1);}
-			else {Menu_Animation();}			//ÎŞ°´¼ü£¬½öÖØ»­
-		}		}
-
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-	}
-}
-
-
-/********************************Ãë±í************************************/
-uint8_t StopClock_Flag = 1;        /* Ãë±íÒ³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-¿ªÊ¼ 3-Í£Ö¹ 4-Çå³ı */
-uint8_t hour,min,sec;              /* Ãë±í¼ÆÊ±Öµ£ºÊ±¡¢·Ö¡¢Ãë */
-uint8_t start_timing_flag = 0;     /* ¼ÆÊ±±êÖ¾£º1-¿ªÊ¼¼ÆÊ± 0-Í£Ö¹¼ÆÊ± */
-
-/**
-  * @brief ÏÔÊ¾Ãë±íÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void Show_StopClock_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
-	OLED_Printf(STOPCLK_TIME_X, STOPCLK_TIME_Y, OLED_8X16, "%02d:%02d:%02d", hour, min, sec);		//Ê±·ÖÃëÏÔÊ¾
-	OLED_ShowString(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, "¿ªÊ¼", OLED_8X16);
-	OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "Í£Ö¹", OLED_8X16);
-	OLED_ShowString(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, "Çå³ı", OLED_8X16);
+	OLED_ShowImage(0,0,16,16,GoBack);
+	OLED_Printf(STOPCLK_TIME_X, STOPCLK_TIME_Y, OLED_8X16, "%02d:%02d:%02d", hour, min, sec);
+	OLED_ShowString(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, "Start", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, "Stop", OLED_8X16);
+	OLED_ShowString(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, "Clear", OLED_8X16);
 }
 
-//ÃëÊı×ÔÔöº¯Êı
 void StopClock_Tick(void)
 {
 	static uint16_t Timer_count;
 	Timer_count++;
-	if(Timer_count >= STOPCLK_1S_TICKS)		//Ã¿¸ô1Ãë½øĞĞÊ±¼äµİÔö
+	if(Timer_count >= STOPCLK_1S_TICKS)
 	{
 		Timer_count = 0;
 		if(start_timing_flag == 1)
-		{	
+		{
 			sec++;
 			if(sec >= STOPCLK_SEC_MAX)
 			{
@@ -535,527 +247,753 @@ void StopClock_Tick(void)
 	}
 }
 
-/**
-  * @brief Ãë±í¿ªÊ¼¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void ClkCount_Start(void)
 {
-	start_timing_flag = 1;	//¿ªÊ¼¼ÆÊ±
+	start_timing_flag = 1;
 }
 
-/**
-  * @brief Ãë±íÍ£Ö¹¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void ClkCount_Stop(void)
 {
-	start_timing_flag = 0;  //Í£Ö¹¼ÆÊ±
+	start_timing_flag = 0;
 }
 
-/**
-  * @brief Ãë±íÇå³ı¼ÆÊ±
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void ClkCount_Clear(void)
 {
 	start_timing_flag = 0;
-	hour = min = sec = 0;  //ÇåÁã¼ÆÊ±Öµ
-}
-
-/*
-* Ãë±í¹¦ÄÜÊµÏÖº¯Êı
-*/
-int StopClock(void)
-{
-	uint8_t Temp_StopClock_Flag = 0;		//·µ»ØÃë±íÒ³Ãæ¹â±êÎ»ÖÃ
-	while(1) //Get key's number continuely
-	{
-
-		KeyNum = Key_GetNum(); //Get Key Number
-		if(KeyNum == 1) //Key1: last item
-		{
-			//press key1 to move last one 
-			StopClock_Flag--;
-			if(StopClock_Flag <= 0) 
-			{
-				StopClock_Flag = 4; 		//cursor move to second function£º [Çå³ı]
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) //Key2: next item
-		{
-			StopClock_Flag ++;
-			if(StopClock_Flag > 4)
-			{
-				StopClock_Flag = 1; //cursor move to first item [·µ»Ø]
-			}
-		}
-		else if(KeyNum == 3) //Key3: press to confirmation
-		{
-			OLED_Clear();  //Clear Screen
-			OLED_Update(); //ReFlash Screen
-			Temp_StopClock_Flag = StopClock_Flag;
-		}
-
-
-		if(Temp_StopClock_Flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
-		{
-			OLED_Clear();
-			return 0;
-		}
-		else if(Temp_StopClock_Flag == 2)			//¹â±êÎ»ÖÃ£º¡¾¿ªÊ¼¡¿
-		{
-			ClkCount_Start();						//µ÷ÓÃ[¿ªÊ¼¼ÆÊ±]º¯Êı	
-			OLED_Clear();			
-		}
-		else if(Temp_StopClock_Flag == 3)			//¹â±êÎ»ÖÃ£º¡¾Í£Ö¹¡¿
-		{
-			ClkCount_Stop();						//µ÷ÓÃ[Í£Ö¹¼ÆÊ±]º¯Êı	
-			OLED_Clear();			
-		}
-		else if(Temp_StopClock_Flag == 4)			//¹â±êÎ»ÖÃ£º¡¾Çå³ı¡¿
-		{
-			ClkCount_Clear();						//µ÷ÓÃ[Çå³ı¼ÆÊ±]º¯Êı	
-			OLED_Clear();			
-		}
-
-
-		/******Background_Color of Function selection******/
-				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-switch(StopClock_Flag)
-		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
-				Show_StopClock_UI();
-				OLED_ReverseArea(0,0,16,16);
-				OLED_Update();
-				break;
-			case 2: 		//[¿ªÊ¼]Í¼±ê´¦
-				Show_StopClock_UI();
-				OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
-				OLED_Update();
-				break;
-			case 3:			//[Í£Ö¹]Í¼±ê´¦
-				Show_StopClock_UI();
-				OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
-				OLED_Update();
-				break;	
-			case 4:			//[Çå³ı]Í¼±ê´¦
-				Show_StopClock_UI();
-				OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H);
-				OLED_Update();
-				break;
-		}		}
-
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-}
+	hour = min = sec = 0;
 }
 
 
-/********************************ÊÖµçÍ²************************************/
-uint8_t flashlight_Flag = 1;         /* ÊÖµçÍ²Ò³Ãæ¹â±êÎ»ÖÃ£º1-·µ»Ø 2-OFF 3-ON */
+/********************************æ‰‹ç”µç­’************************************/
 
-/**
-  * @brief ÏÔÊ¾ÊÖµçÍ²Ò³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
+uint8_t flashlight_Flag = 1;
+
 void Show_flashlight_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);
 	OLED_ShowString(20,24,"OFF",OLED_8X16);
 	OLED_ShowString(84,24,"ON",OLED_8X16);
 }
 
-/**
-  * @brief ÊÖµçÍ²´ò¿ª
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void flashlight_ON(void)
 {
 	LED1_ON();
 }
 
-/**
-  * @brief ÊÖµçÍ²¹Ø±Õ
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void flashlight_OFF(void)
 {
 	LED1_OFF();
 }
 
-int flashlight_Func(void)
-{
-	uint8_t Temp_flashlight_Flag = 0;		//·µ»ØÃë±íÒ³Ãæ¹â±êÎ»ÖÃ
-	while(1) //Get key's number continuely
-	{
-
-		KeyNum = Key_GetNum(); //Get Key Number
-		if(KeyNum == 1) //Key1: last item
-		{
-			//press key1 to move last one 
-			flashlight_Flag--;
-			if(flashlight_Flag <= 0) 
-			{
-				flashlight_Flag = 3; 		//cursor move to second function£º [ON]
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) //Key2: next item
-		{
-			flashlight_Flag ++;
-			if(flashlight_Flag > 3)
-			{
-				flashlight_Flag = 1; //cursor move to first item [·µ»Ø]
-			}
-		}
-		else if(KeyNum == 3) //Key3: press to confirmation
-		{
-			OLED_Clear();  //Clear Screen
-			OLED_Update(); //ReFlash Screen
-			Temp_flashlight_Flag = flashlight_Flag;
-		}
-
-
-		if(Temp_flashlight_Flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
-		{
-			flashlight_OFF();
-			return 0;
-		}
-		else if(Temp_flashlight_Flag == 2)			//¹â±êÎ»ÖÃ£º¡¾OFF¡¿
-		{
-			flashlight_OFF();
-		}
-		else if(Temp_flashlight_Flag == 3)			//¹â±êÎ»ÖÃ£º¡¾ON¡¿
-		{
-			flashlight_ON();
-		}
-
-
-		/******Background_Color of Function selection******/
-				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-switch(flashlight_Flag)
-		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
-				Show_flashlight_UI();
-				OLED_ReverseArea(0,0,16,16);
-				OLED_Update();
-				break;
-			case 2: 		//[OFF]Í¼±ê´¦ 
-				Show_flashlight_UI();
-				OLED_ReverseArea(20,24,24,16);
-				OLED_Update();
-				break;
-			case 3:			//[ON]Í¼±ê´¦
-				Show_flashlight_UI();
-				OLED_ReverseArea(84,24,16,16);
-				OLED_Update();
-				break;	
-			default:
-				Show_flashlight_UI();
-				break;
-		}		}
-
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-}
-
-}
-
 
 /********************************MPU6050************************************/
 
-float delta = MPU_SAMPLE_PERIOD_S;      /* ²ÉÑùÖÜÆÚ£¬µ¥Î»Ãë */
-float a = MPU_FILTER_ALPHA;             /* »¥²¹ÂË²¨ÏµÊı£¬·¶Î§0~1£¬Ô½´óÍÓÂİÒÇÈ¨ÖØÔ½¸ß */
-int16_t ax,ay,az;                    /* ¼ÓËÙ¶È¼ÆX¡¢Y¡¢ZÖáÔ­Ê¼Êı¾İ */
-int16_t gx,gy,gz;                   /* ÍÓÂİÒÇX¡¢Y¡¢ZÖáÔ­Ê¼Êı¾İ */
-float roll_a,pitch_a;               /* ¼ÓËÙ¶È¼Æ¼ÆËãµÄºá¹ö½ÇºÍ¸©Ñö½Ç */
-float roll_g,pitch_g,yaw_g;         /* ÍÓÂİÒÇ¼ÆËãµÄºá¹ö½Ç¡¢¸©Ñö½Ç¡¢Æ«º½½Ç */
-float Roll=0.0,Pitch=0.0,Yaw=0.0;    /* ÈÚºÏºóµÄÅ·À­½Ç */
-double Pi = 3.1415927;  /* Ô²ÖÜÂÊ */
+float delta = MPU_SAMPLE_PERIOD_S;
+float a = MPU_FILTER_ALPHA;
+int16_t ax,ay,az;
+int16_t gx,gy,gz;
+float roll_a,pitch_a;
+float roll_g,pitch_g,yaw_g;
+float Roll=0.0,Pitch=0.0,Yaw=0.0;
+double Pi = 3.1415927;
 
-/**
-  * @brief MPU6050Å·À­½Ç½âËã£¨»¥²¹ÂË²¨Ëã·¨£©
-  * @param  ÎŞ
-  * @retval ÎŞ
-  * @note   ½áºÏ¼ÓËÙ¶È¼ÆºÍÍÓÂİÒÇÊı¾İ£¬Ê¹ÓÃ»¥²¹ÂË²¨Ëã·¨ÈÚºÏµÃµ½ÎÈ¶¨µÄ½Ç¶È
-  *         ÍÓÂİÒÇ¶¯Ì¬ÏìÓ¦ºÃµ«ÓĞÆ¯ÒÆ£¬¼ÓËÙ¶È¼Æ¾²Ì¬¾«¶È¸ßµ«¶¯Ì¬ÏìÓ¦²î
-  */
 void MPU6050_Calculation_Euler_angles(void)
 {
-	delay_ms(MPU_SAMPLE_DELAY_MS);								//²ÉÑùÖÜÆÚÎª5ms£¨Ô­Delay_ms¸ÄÎªdelay_ms£©
-	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);		//´«µØÖ··½Ê½£¬·µ»ØÍÓÂİÒÇ¼ÓËÙ¶ÈÖµ
-	/*ÍÓÂİÒÇÅ·À­½Ç¼ÆËã*/
-	roll_g = Roll + (float)gx*delta;				//ºá¹ö½ÇxÖá
-	pitch_g = Pitch + (float)gy*delta;				//¸©Ñö½ÇyÖá
-	yaw_g = Yaw + (float)gz*delta;					//Æ«º½½ÇzÖá
+	delay_ms(MPU_SAMPLE_DELAY_MS);
+	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);
 
-	/*¼ÓËÙ¶È¼ÆÅ·À­½Ç¼ÆËã*/
-	roll_a = atan2(ay,az)*180/Pi;					//ºá¹ö½ÇxÖá
-	pitch_a = atan2((-1)*ax,az)*180/Pi;				//¸©Ñö½ÇyÖá
+	roll_g = Roll + (float)gx*delta;
+	pitch_g = Pitch + (float)gy*delta;
+	yaw_g = Yaw + (float)gz*delta;
 
-	/*»¥²¹ÂË²¨*/
-	//²ÎÊıaÔ½´ó£»ÍÓÂİÒÇÊı¾İÕ¼±ÈÔ½´ó
-	//²ÎÊıaÔ½Ğ¡£º¼ÓËÙ¶È¼ÆÊı¾İÕ¼±ÈÔ½´ó
+	roll_a = atan2(ay,az)*180/Pi;
+	pitch_a = atan2((-1)*ax,az)*180/Pi;
+
 	Roll =  a*roll_g + (1-a)*roll_a;
 	Pitch = a*pitch_g +(1-a)*pitch_a;
 	Yaw = a*yaw_g;
 }
 
-/**
-  * @brief ÏÔÊ¾MPU6050Êı¾İÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void Show_MPU6050_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);
 	OLED_Printf(0,16,OLED_8X16,"Roll:  %.2f",Roll);
 	OLED_Printf(0,32,OLED_8X16,"Pitch: %.2f",Pitch);
 	OLED_Printf(0,48,OLED_8X16,"Yaw:   %.2f",Yaw);
 }
 
-int MPU6050_Main(void)
-{
-	while (1)
-	{
 
-		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
-		{
-			OLED_Clear();		//ÇåÆÁ
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
-			return 0;
-		}
+/*********************************æ¸¸æˆé€‰æ‹©é¡µ UI*******************************/
 
-		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-		OLED_Clear();
-		MPU6050_Calculation_Euler_angles();
-		Show_MPU6050_UI();
-		OLED_ReverseArea(0,0,16,16);	//·´ÏàÏÔÊ¾·µ»ØÍ¼±ê
-		OLED_Update();
-		}
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-}
-
-}
-
-/*********************************Dino_Game********************************************/
-
-/**
-  * @brief ÏÔÊ¾ÓÎÏ·Ñ¡ÔñÒ³ÃæUI
-  * @param  ÎŞ
-  * @retval ÎŞ
-  */
 void Show_Game_UI(void)
 {
-	OLED_ShowImage(0,0,16,16,GoBack);			//·µ»ØÍ¼±ê
+	OLED_ShowImage(0,0,16,16,GoBack);
 	OLED_ShowString(0,16,"Google DinoGame",OLED_8X16);
 }
 
-uint8_t game_flag = 1;              /* ÓÎÏ·Ñ¡ÔñÒ³Ãæ¹â±ê£º1-·µ»Ø 2-½øÈëÓÎÏ· */
+uint8_t game_flag = 1;
 
-int Game(void)
+
+/*********************************åŠ¨æ€è¡¨æƒ…********************************************/
+
+static uint8_t emoji_phase = 0;   /* 0=é—­çœ¼ 1=ççœ¼ 2=ç­‰å¾…é—´éš” */
+static uint8_t emoji_frame = 0;   /* å½“å‰å­å¸§è®¡æ•°å™¨ */
+
+/*
+* @brief ç»˜åˆ¶å•å¸§è¡¨æƒ…ï¼ˆè¾…åŠ©å‡½æ•°ï¼‰
+*/
+static void DrawEmojiFrame(int8_t eyebrow_offset, int8_t eye_ry)
 {
-	uint8_t Temp_game_flag = 0;
-	while(1) //Get key's number continuely
-	{
-
-		KeyNum = Key_GetNum(); //Get Key Number
-		if(KeyNum == 1) //Key1: last item
-		{
-			//press key1 to move last one 
-			game_flag--;
-			if(game_flag <= 0) 
-			{
-				game_flag = 2; 		//ÓÎÏ·±êÌâ
-			}
-		}
-		//when press key2 move to next item, cursor move to first item
-		else if(KeyNum == 2) //Key2: next item
-		{
-			game_flag ++;
-			if(game_flag >= 3)
-			{
-				game_flag = 1; //cursor move to first item [·µ»Ø]
-			}
-		}
-		else if(KeyNum == 3) //Key3: press to confirmation
-		{
-			OLED_Clear();  //Clear Screen
-			OLED_Update(); //ReFlash Screen
-			Temp_game_flag = game_flag;
-		}
-
-
-		if(Temp_game_flag == 1)				//¹â±êÎ»ÖÃ£º¡¾·µ»Ø¡¿
-		{
-			return 0;
-		}
-		else if(Temp_game_flag == 2)			//¹â±êÎ»ÖÃ£º¡¾½øÈëÓÎÏ·¡¿
-		{
-			Game_Init();						//µ÷ÓÃÓÎÏ·³õÊ¼»¯£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
-			Dino_game_Animation();				//µ÷ÓÃÓÎÏ·¶¯»­£¨stub£¬´ıdinoÇ¨ÒÆºóÌæ»»£©
-			Temp_game_flag = 0;
-		}
-		else
-		{
-			;
-		}
-
-
-		/******Background_Color of Function selection******/
-				if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-switch(game_flag)
-		{
-			case 1: 		//[·µ»Ø]Í¼±ê´¦
-				Show_Game_UI();
-				OLED_ReverseArea(0,0,16,16);
-				OLED_Update();
-				break;
-			case 2: 		//[]Í¼±ê´¦ 
-				Show_Game_UI();
-				OLED_ReverseArea(0,16,120,16);
-				OLED_Update();
-				break;
-			default:
-				Show_Game_UI();
-				break;
-		}		}
-
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
+	OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + eyebrow_offset, 16, 16, eyebrow[0]);
+	OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + eyebrow_offset, 16, 16, eyebrow[1]);
+	OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, eye_ry, 1);
+	OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, eye_ry, 1);
+	OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
 }
 
-}
-
-
-
-/*********************************¶¯Ì¬±íÇé°ü********************************************/
-
-/**
-  * @brief ÏÔÊ¾¶¯Ì¬±íÇé¶¯»­£¨ÕöÑÛ/±ÕÑÛÑ­»·£©
-  * @param  ÎŞ
-  * @retval ÎŞ
-  * @note   Ñ­»·ÏÔÊ¾Õ£ÑÛ¶¯»­£º±ÕÑÛ->ÕöÑÛ->ÑÓÊ±->ÖØ¸´
-  */
+/* ä¿ç•™åŸ Show_emoji_UI ä¾›å‚è€ƒï¼Œä½† Render_Emoji å·²æ›¿ä»£å…¶åŠŸèƒ½ */
 void Show_emoji_UI(void)
 {
-	//±ÕÑÛ
-	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
-	{
-		OLED_Clear();
-		//×óÃ¼Ã«
-		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[0]);
-		//ÓÒÃ¼Ã«
-		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + i, 16, 16, eyebrow[1]);
-		//×óÑÛ
-		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
-		//ÓÒÑÛ
-		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - i, 1);
-		//×ì°Í
-		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
-		OLED_Update();
-		delay_ms(EMOJI_BLINK_DELAY_MS);		//Ô­Delay_ms¸ÄÎªdelay_ms
-	}
-
-	//ÕöÑÛ
-	for(uint8_t i=0; i<=EMOJI_BLINK_FRAMES; i++)
-	{
-		OLED_Clear();
-		//×óÃ¼Ã«
-		OLED_ShowImage(EMOJI_L_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[0]);
-		//ÓÒÃ¼Ã«
-		OLED_ShowImage(EMOJI_R_EYEBROW_X, EMOJI_EYEBROW_Y + EMOJI_BLINK_FRAMES - i, 16, 16, eyebrow[1]);
-		//×óÑÛ
-		OLED_DrawEllipse(EMOJI_L_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
-		//ÓÒÑÛ
-		OLED_DrawEllipse(EMOJI_R_EYE_CX, EMOJI_EYE_CY, EMOJI_EYE_RX, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + i, 1);
-		//×ì°Í
-		OLED_ShowImage(EMOJI_MOUTH_X, EMOJI_MOUTH_Y, EMOJI_MOUTH_W, EMOJI_MOUTH_H, mouth);
-		OLED_Update();
-		delay_ms(EMOJI_BLINK_DELAY_MS);		//Ô­Delay_ms¸ÄÎªdelay_ms
-	}
-
-	delay_ms(EMOJI_BLINK_GAP_MS);				//Ô­Delay_ms¸ÄÎªdelay_ms
-}
-
-int Emoji_Func(void)
-{
-	while(1)
-	{
-
-		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
-		{
-			OLED_Clear();		//ÇåÆÁ			
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
-			return 0;
-		}
-		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-		Show_emoji_UI();
-		}
-			__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
-}
-
+	/* ç”± Render_Emoji çŠ¶æ€æœºæ›¿ä»£ï¼Œæ­¤å‡½æ•°ä¿ç•™ä»¥å…¼å®¹æ—§æ¥å£ */
 }
 
 
-/*********************************Ë®Æ½ÒÇ********************************************/
-/*
-* @brief: ÏÔÊ¾Ë®Æ½ÒÇUI
-*/
+/*********************************æ°´å¹³ä»ª********************************************/
+
 void Show_Gradienter_UI(void)
 {
 	int16_t x = GRADIENTER_CENTER_X - Roll;
 	int16_t y = GRADIENTER_CENTER_Y + Pitch;
-	MPU6050_Calculation_Euler_angles();					//¼ÆËãÅ·À­½Ç
-	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);			//»æÖÆË®Æ½ÒÇÍâÎ§Ô²
-	int16_t dx = x - GRADIENTER_CENTER_X;				//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²Ïà¶Ô´óÔ²ĞÄµÄx×ø±ê
-	int16_t dy = y - GRADIENTER_CENTER_Y;				//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²Ïà¶Ô´óÔ²ĞÄµÄy×ø±ê	
-	float distance = sqrtf(dx*dx + dy*dy);				//¼ÆËãÊµĞÄÔ²¾àÀë´óÔ²ĞÄµÄ¾àÀë
+	MPU6050_Calculation_Euler_angles();
+	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);
+	int16_t dx = x - GRADIENTER_CENTER_X;
+	int16_t dy = y - GRADIENTER_CENTER_Y;
+	float distance = sqrtf(dx*dx + dy*dy);
 	if(distance > GRADIENTER_BOUNDARY_R)
 	{
-		float scale = GRADIENTER_BOUNDARY_R / distance;	//¼ÆËãËõ·Å±ÈÀı
-		x = GRADIENTER_CENTER_X + (dx * scale);			//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²µÄx×ø±ê
-		y = GRADIENTER_CENTER_Y + (dy * scale);			//¼ÆËãË®Æ½ÒÇÄÚÊµĞÄÔ²µÄy×ø±ê
+		float scale = GRADIENTER_BOUNDARY_R / distance;
+		x = GRADIENTER_CENTER_X + (dx * scale);
+		y = GRADIENTER_CENTER_Y + (dy * scale);
 	}
-	OLED_DrawCircle(x, y, GRADIENTER_INNER_R, OLED_FILLED);	//»æÖÆË®Æ½ÒÇÄÚÊµĞÄÔ²
-	OLED_Update();			//Ë¢ĞÂÆÁÄ»
+	OLED_DrawCircle(x, y, GRADIENTER_INNER_R, OLED_FILLED);
+	/* OLED_Update ç”± Task_UI ç»Ÿä¸€è°ƒç”¨ */
 }
 
-uint8_t Gradienter_Func(void)
-{
-	while(1)
-	{
 
-		KeyNum = Key_GetNum();
-		if(KeyNum == 3)			//È·ÈÏ¼ü°´ÏÂ
-		{
-			OLED_Clear();		//ÇåÆÁ			
-			OLED_Update();		//Ë¢ĞÂÆÁÄ»
-			return 0;
-		}	
-		if(HAL_GetTick() - last_draw_tick >= FRAME_PERIOD_MS)
-		{
-			last_draw_tick = HAL_GetTick();
-		OLED_Clear();
-		Show_Gradienter_UI();	// ÄÚ²¿ÒÑµ÷ÓÃ OLED_Update()
-		}
-		__WFI();	//µÈ´ıÖĞ¶Ï»½ĞÑ£¬½µµÍ¿ÕÏĞ¹¦ºÄ
+/*************************SetTime çŠ¶æ€å˜é‡**************************/
+
+static uint8_t Key_CursorFlag = 1;              /* ä¸»èœå•å…‰æ ‡ï¼š1=è¿”å› 2=å¹´ 3=æœˆ 4=æ—¥ 5=æ—¶ 6=åˆ† 7=ç§’ */
+static SetTimeState_t settime_state = SETTIME_MENU;
+
+
+/*************************é¡µé¢å­çŠ¶æ€å˜é‡**************************/
+
+static uint8_t Clockmoveflag = 1;     /* é¦–é¡µæ—¶é’Ÿå…‰æ ‡ï¼š1=èœå• 2=è®¾ç½® */
+static uint8_t SettingFlag = 1;       /* è®¾ç½®é¡µå…‰æ ‡ï¼š1=è¿”å› 2=è®¾ç½®æ—¶é—´ */
+
+
+/* ================================================================
+ *   Render_* å‡½æ•° â€” æ¯å¸§ç»˜åˆ¶ï¼ˆç”± Task_UI è°ƒç”¨ï¼‰
+ *   ä¸åŒ…å« OLED_Clear() / OLED_Update()ï¼Œç”± Task_UI ç»Ÿä¸€å¤„ç†
+ * ================================================================ */
+
+/*
+* @brief é¦–é¡µæ—¶é’Ÿæ¸²æŸ“
+*/
+static void Render_Clock(void)
+{
+	Show_Clock_UI();
+	switch(Clockmoveflag)
+	{
+		case 1: OLED_ReverseArea(0,48,32,16);   break;  /* [èœå•] */
+		case 2: OLED_ReverseArea(96,48,32,16);  break;  /* [è®¾ç½®] */
+		default: break;
 	}
+}
+
+/*
+* @brief è®¾ç½®é¡µé¢æ¸²æŸ“
+*/
+static void Render_Setting(void)
+{
+	Show_Setting_UI();
+	switch(SettingFlag)
+	{
+		case 1: OLED_ReverseArea(0,0,16,16);    break;  /* [è¿”å›] */
+		case 2: OLED_ReverseArea(0,16,96,16);   break;  /* [è®¾ç½®æ—¶é—´æ—¥æœŸ] */
+		default: break;
+	}
+}
+
+/*
+* @brief èœå•é¡µé¢æ¸²æŸ“
+*/
+static void Render_Menu(void)
+{
+	if(MenuFlag == 1)
+	{
+		/* ä½ç½®1æ˜¯[è¿”å›]ï¼Œæ— æ»‘åŠ¨åŠ¨ç”» */
+		OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);
+		OLED_ShowImage(MENU_ICON_BASE_X, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[0]);
+	}
+	else
+	{
+		if(move_stateFlag == 1)
+		{
+			if(Direct_Flag == 1)
+			{
+				Set_Selection(1, MenuFlag, MenuFlag-1);
+			}
+			else if(Direct_Flag == 2)
+			{
+				Set_Selection(1, MenuFlag-2, MenuFlag-1);
+			}
+			else
+			{
+				Menu_Animation();
+			}
+		}
+		else
+		{
+			Menu_Animation();
+		}
+	}
+}
+
+/*
+* @brief ç§’è¡¨é¡µé¢æ¸²æŸ“
+*/
+static void Render_Stopwatch(void)
+{
+	Show_StopClock_UI();
+	switch(StopClock_Flag)
+	{
+		case 1: OLED_ReverseArea(0,0,16,16); break;
+		case 2: OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
+		case 3: OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
+		case 4: OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
+		default: break;
+	}
+}
+
+/*
+* @brief æ‰‹ç”µç­’é¡µé¢æ¸²æŸ“
+*/
+static void Render_Flashlight(void)
+{
+	Show_flashlight_UI();
+	switch(flashlight_Flag)
+	{
+		case 1: OLED_ReverseArea(0,0,16,16);    break;
+		case 2: OLED_ReverseArea(20,24,24,16);  break;
+		case 3: OLED_ReverseArea(84,24,16,16);  break;
+		default: break;
+	}
+}
+
+/*
+* @brief MPU6050 ä¼ æ„Ÿå™¨é¡µé¢æ¸²æŸ“
+*/
+static void Render_MPU6050(void)
+{
+	MPU6050_Calculation_Euler_angles();
+	Show_MPU6050_UI();
+	OLED_ReverseArea(0,0,16,16);
+}
+
+/*
+* @brief æ¸¸æˆé€‰æ‹©é¡µé¢æ¸²æŸ“
+*/
+static void Render_GameSelect(void)
+{
+	Show_Game_UI();
+	switch(game_flag)
+	{
+		case 1: OLED_ReverseArea(0,0,16,16);     break;
+		case 2: OLED_ReverseArea(0,16,120,16);   break;
+		default: break;
+	}
+}
+
+/*
+* @brief æé¾™æ¸¸æˆé¡µé¢æ¸²æŸ“ï¼ˆæ¯å¸§è°ƒç”¨ dino.c çš„å•å¸§å‡½æ•°ï¼‰
+*/
+static void Render_DinoGame(void)
+{
+	if(Dino_RenderFrame())
+	{
+		/* æ¸¸æˆç»“æŸï¼Œè¿”å›æ¸¸æˆé€‰æ‹©é¡µ */
+		g_CurrentPage = PAGE_GAME_SELECT;
+	}
+}
+
+/*
+* @brief è¡¨æƒ…åŠ¨ç”»é¡µé¢æ¸²æŸ“ï¼ˆçŠ¶æ€æœºæ¨è¿›ï¼‰
+*/
+static void Render_Emoji(void)
+{
+	int8_t i;
+	switch(emoji_phase)
+	{
+		case 0: /* é—­çœ¼é˜¶æ®µï¼šæ¯33msæ¨è¿›1å¸§ */
+			i = emoji_frame;
+			DrawEmojiFrame(i, EMOJI_EYE_RY_MAX - i);
+			if(++emoji_frame > EMOJI_BLINK_FRAMES)
+			{
+				emoji_frame = 0;
+				emoji_phase = 1;
+			}
+			break;
+		case 1: /* ççœ¼é˜¶æ®µ */
+			i = EMOJI_BLINK_FRAMES - emoji_frame;
+			DrawEmojiFrame(i, EMOJI_EYE_RY_MAX - EMOJI_BLINK_FRAMES + emoji_frame);
+			if(++emoji_frame > EMOJI_BLINK_FRAMES)
+			{
+				emoji_frame = 0;
+				emoji_phase = 2;
+			}
+			break;
+		case 2: /* ç­‰å¾…é—´éš” ~500ms/33ms â‰ˆ 15å¸§ */
+			DrawEmojiFrame(0, EMOJI_EYE_RY_MAX);
+			if(++emoji_frame >= 15)
+			{
+				emoji_frame = 0;
+				emoji_phase = 0;
+			}
+			break;
+	}
+}
+
+/*
+* @brief æ°´å¹³ä»ªé¡µé¢æ¸²æŸ“
+*/
+static void Render_Gradienter(void)
+{
+	Show_Gradienter_UI();
+}
+
+/*
+* @brief è®¾ç½®æ—¶é—´é¡µé¢æ¸²æŸ“
+*/
+static void Render_SetTime(void)
+{
+	/* æ ¹æ®å­çŠ¶æ€å†³å®šæ˜¾ç¤ºæ—¥æœŸè¿˜æ˜¯æ—¶é—´ */
+	if(settime_state == SETTIME_MENU || settime_state <= SETTIME_DAY)
+	{
+		Show_SetDate_UI();
+	}
+	if(settime_state == SETTIME_MENU || settime_state >= SETTIME_HOUR)
+	{
+		Show_SetTime_UI();
+	}
+
+	switch(settime_state)
+	{
+		case SETTIME_MENU:
+			switch(Key_CursorFlag)
+			{
+				case 1: OLED_ReverseArea(0,0,16,16);     break; /* è¿”å› */
+				case 2: OLED_ReverseArea(24,16,32,16);   break; /* å¹´ */
+				case 3: OLED_ReverseArea(24,32,16,16);   break; /* æœˆ */
+				case 4: OLED_ReverseArea(24,48,16,16);   break; /* æ—¥ */
+				case 5: OLED_ReverseArea(24,0,16,16);    break; /* æ—¶ */
+				case 6: OLED_ReverseArea(24,16,16,16);   break; /* åˆ† */
+				case 7: OLED_ReverseArea(24,32,16,16);   break; /* ç§’ */
+			}
+			break;
+		case SETTIME_YEAR:  OLED_ReverseArea(24,16,32,16);  break;
+		case SETTIME_MONTH: OLED_ReverseArea(24,32,16,16);  break;
+		case SETTIME_DAY:   OLED_ReverseArea(24,48,16,16);  break;
+		case SETTIME_HOUR:  OLED_ReverseArea(24,0,16,16);   break;
+		case SETTIME_MIN:   OLED_ReverseArea(24,16,16,16);  break;
+		case SETTIME_SEC:   OLED_ReverseArea(24,32,16,16);  break;
+	}
+}
+
+
+/* ================================================================
+ *   UI_ProcessKey â€” æŒ‰é”®â†’çŠ¶æ€è½¬æ¢ï¼ˆç”± Task_UI è°ƒç”¨ï¼‰
+ * ================================================================ */
+
+static void UI_ProcessKey(uint8_t key)
+{
+	switch(g_CurrentPage)
+	{
+		case PAGE_CLOCK:
+			if(key == 1)
+			{
+				if(--Clockmoveflag == 0) Clockmoveflag = 2;
+			}
+			else if(key == 2)
+			{
+				if(++Clockmoveflag == 3) Clockmoveflag = 1;
+			}
+			else if(key == 3)
+			{
+				if(Clockmoveflag == 1)
+				{
+					g_CurrentPage = PAGE_MENU;
+					MenuFlag = 2;
+					move_stateFlag = 1;
+					Direct_Flag = 2;
+					Pre_item = 1;
+					Pre_x = MENU_ICON_BASE_X;
+				}
+				else
+				{
+					g_CurrentPage = PAGE_SETTING;
+					SettingFlag = 1;
+				}
+			}
+			break;
+
+		case PAGE_SETTING:
+			if(key == 1)
+			{
+				if(--SettingFlag == 0) SettingFlag = 2;
+			}
+			else if(key == 2)
+			{
+				if(++SettingFlag == 3) SettingFlag = 1;
+			}
+			else if(key == 3)
+			{
+				if(SettingFlag == 1)
+				{
+					g_CurrentPage = PAGE_CLOCK;
+					Clockmoveflag = 1;
+				}
+				else
+				{
+					/* è¿›å…¥è®¾ç½®æ—¶é—´çŠ¶æ€æœº */
+					g_CurrentPage = PAGE_SETTIME;
+					Key_CursorFlag = 1;
+					settime_state = SETTIME_MENU;
+				}
+			}
+			break;
+
+		case PAGE_MENU:
+			if(key == 1)
+			{
+				Direct_Flag = 1;
+				move_stateFlag = 1;
+				if(--MenuFlag == 0) MenuFlag = MENU_CURSOR_MAX;
+			}
+			else if(key == 2)
+			{
+				Direct_Flag = 2;
+				move_stateFlag = 1;
+				if(++MenuFlag == MENU_CURSOR_MAX + 1) MenuFlag = MENU_CURSOR_MIN;
+			}
+			else if(key == 3)
+			{
+				Direct_Flag = 0;
+				/* æ’­æ”¾è¿›åœºåŠ¨ç”»åè·³è½¬ */
+				MenuToFunction_Animation();
+				switch(MenuFlag)
+				{
+					case 1: /* è¿”å› */
+						g_CurrentPage = PAGE_CLOCK;
+						Clockmoveflag = 1;
+						break;
+					case 2: /* ç§’è¡¨ */
+						g_CurrentPage = PAGE_STOPWATCH;
+						StopClock_Flag = 1;
+						break;
+					case 3: /* æ‰‹ç”µç­’ */
+						g_CurrentPage = PAGE_FLASHLIGHT;
+						flashlight_Flag = 1;
+						flashlight_OFF();
+						break;
+					case 4: /* MPU6050 */
+						g_CurrentPage = PAGE_MPU6050;
+						break;
+					case 5: /* æ¸¸æˆ */
+						g_CurrentPage = PAGE_GAME_SELECT;
+						game_flag = 1;
+						break;
+					case 6: /* è¡¨æƒ…åŠ¨ç”» */
+						g_CurrentPage = PAGE_EMOJI;
+						emoji_phase = 0;
+						emoji_frame = 0;
+						break;
+					case 7: /* æ°´å¹³ä»ª */
+						g_CurrentPage = PAGE_GRADIENTER;
+						break;
+				}
+			}
+			break;
+
+		case PAGE_STOPWATCH:
+			if(key == 1)
+			{
+				if(--StopClock_Flag == 0) StopClock_Flag = 4;
+			}
+			else if(key == 2)
+			{
+				if(++StopClock_Flag == 5) StopClock_Flag = 1;
+			}
+			else if(key == 3)
+			{
+				switch(StopClock_Flag)
+				{
+					case 1: /* è¿”å› */
+						g_CurrentPage = PAGE_MENU;
+						MenuFlag = 2;
+						move_stateFlag = 1;
+						Direct_Flag = 2;
+						Pre_item = 1;
+						Pre_x = MENU_ICON_BASE_X;
+						break;
+					case 2: ClkCount_Start();  break; /* å¼€å§‹ */
+					case 3: ClkCount_Stop();   break; /* åœæ­¢ */
+					case 4: ClkCount_Clear();  break; /* æ¸…é™¤ */
+				}
+			}
+			break;
+
+		case PAGE_FLASHLIGHT:
+			if(key == 1)
+			{
+				if(--flashlight_Flag == 0) flashlight_Flag = 3;
+			}
+			else if(key == 2)
+			{
+				if(++flashlight_Flag == 4) flashlight_Flag = 1;
+			}
+			else if(key == 3)
+			{
+				switch(flashlight_Flag)
+				{
+					case 1: /* è¿”å› */
+						flashlight_OFF();
+						g_CurrentPage = PAGE_MENU;
+						MenuFlag = 3;
+						move_stateFlag = 1;
+						Direct_Flag = 2;
+						Pre_item = 2;
+						Pre_x = MENU_ICON_BASE_X;
+						break;
+					case 2: flashlight_OFF(); break; /* OFF */
+					case 3: flashlight_ON();  break; /* ON */
+				}
+			}
+			break;
+
+		case PAGE_MPU6050:
+			if(key == 3)
+			{
+				g_CurrentPage = PAGE_MENU;
+				MenuFlag = 4;
+				move_stateFlag = 1;
+				Direct_Flag = 2;
+				Pre_item = 3;
+				Pre_x = MENU_ICON_BASE_X;
+			}
+			break;
+
+		case PAGE_GAME_SELECT:
+			if(key == 1)
+			{
+				if(--game_flag == 0) game_flag = 2;
+			}
+			else if(key == 2)
+			{
+				if(++game_flag == 3) game_flag = 1;
+			}
+			else if(key == 3)
+			{
+				if(game_flag == 1)
+				{
+					/* è¿”å›èœå• */
+					g_CurrentPage = PAGE_MENU;
+					MenuFlag = 5;
+					move_stateFlag = 1;
+					Direct_Flag = 2;
+					Pre_item = 4;
+					Pre_x = MENU_ICON_BASE_X;
+				}
+				else
+				{
+					/* è¿›å…¥æé¾™æ¸¸æˆ */
+					Game_Init();
+					g_CurrentPage = PAGE_DINO_GAME;
+				}
+			}
+			break;
+
+		case PAGE_DINO_GAME:
+			if(key == 1)
+			{
+				/* Key1: æé¾™è·³è·ƒ */
+				Dino_JumpRequest = 1;
+			}
+			else if(key == 3)
+			{
+				/* Key3: é€€å‡ºæ¸¸æˆ */
+				g_CurrentPage = PAGE_GAME_SELECT;
+				game_flag = 2;
+			}
+			break;
+
+		case PAGE_EMOJI:
+			if(key == 3)
+			{
+				g_CurrentPage = PAGE_MENU;
+				MenuFlag = 6;
+				move_stateFlag = 1;
+				Direct_Flag = 2;
+				Pre_item = 5;
+				Pre_x = MENU_ICON_BASE_X;
+			}
+			break;
+
+		case PAGE_GRADIENTER:
+			if(key == 3)
+			{
+				g_CurrentPage = PAGE_MENU;
+				MenuFlag = 7;
+				move_stateFlag = 1;
+				Direct_Flag = 2;
+				Pre_item = 6;
+				Pre_x = MENU_ICON_BASE_X;
+			}
+			break;
+
+		case PAGE_SETTIME:
+			if(settime_state == SETTIME_MENU)
+			{
+				/* ä¸»èœå•ï¼šç§»åŠ¨å…‰æ ‡ */
+				if(key == 1)
+				{
+					if(++Key_CursorFlag > 7) Key_CursorFlag = 1;
+				}
+				else if(key == 2)
+				{
+					if(--Key_CursorFlag == 0) Key_CursorFlag = 7;
+				}
+				else if(key == 3)
+				{
+					switch(Key_CursorFlag)
+					{
+						case 1: /* è¿”å›è®¾ç½®é¡µ */
+							g_CurrentPage = PAGE_SETTING;
+							SettingFlag = 2;
+							settime_state = SETTIME_MENU;
+							Key_CursorFlag = 1;
+							break;
+						case 2: settime_state = SETTIME_YEAR;  break;
+						case 3: settime_state = SETTIME_MONTH; break;
+						case 4: settime_state = SETTIME_DAY;   break;
+						case 5: settime_state = SETTIME_HOUR;  break;
+						case 6: settime_state = SETTIME_MIN;   break;
+						case 7: settime_state = SETTIME_SEC;   break;
+					}
+				}
+			}
+			else
+			{
+				/* å­çŠ¶æ€ï¼šä¿®æ”¹å…·ä½“å€¼ */
+				int idx = (int)settime_state - 1; /* SETTIME_YEAR=1 -> idx=0 */
+				if(key == 1)
+				{
+					/* Key1: +1 */
+					ChangeRTC_Time(idx, 1);
+					/* è¾¹ç•Œå›ç»•æ£€æŸ¥ */
+					switch(settime_state)
+					{
+						case SETTIME_MONTH:
+							if(MyRTC_Time[1] > 12) { MyRTC_Time[1] = 1; MyRTC_SetTime(); }
+							break;
+						case SETTIME_DAY:
+							if(MyRTC_Time[2] >= 32) { MyRTC_Time[2] = 1; MyRTC_SetTime(); }
+							break;
+						case SETTIME_HOUR:
+							if(MyRTC_Time[3] >= 24) { MyRTC_Time[3] = 0; MyRTC_SetTime(); }
+							break;
+						case SETTIME_MIN:
+							if(MyRTC_Time[4] >= 60) { MyRTC_Time[4] = 0; MyRTC_SetTime(); }
+							break;
+						case SETTIME_SEC:
+							if(MyRTC_Time[5] >= 60) { MyRTC_Time[5] = 0; MyRTC_SetTime(); }
+							break;
+						default: break;
+					}
+				}
+				else if(key == 2)
+				{
+					/* Key2: -1 */
+					ChangeRTC_Time(idx, 0);
+					/* è¾¹ç•Œå›ç»•æ£€æŸ¥ */
+					switch(settime_state)
+					{
+						case SETTIME_MONTH:
+							if(MyRTC_Time[1] <= 0) { MyRTC_Time[1] = 12; MyRTC_SetTime(); }
+							break;
+						case SETTIME_DAY:
+							if(MyRTC_Time[2] <= 0) { MyRTC_Time[2] = 31; MyRTC_SetTime(); }
+							break;
+						case SETTIME_HOUR:
+							if(MyRTC_Time[3] < 0) { MyRTC_Time[3] = 23; MyRTC_SetTime(); }
+							break;
+						case SETTIME_MIN:
+							if(MyRTC_Time[4] < 0) { MyRTC_Time[4] = 59; MyRTC_SetTime(); }
+							break;
+						case SETTIME_SEC:
+							if(MyRTC_Time[5] < 0) { MyRTC_Time[5] = 59; MyRTC_SetTime(); }
+							break;
+						default: break;
+					}
+				}
+				else if(key == 3)
+				{
+					/* Key3: ç¡®è®¤è¿”å›ä¸»èœå• */
+					settime_state = SETTIME_MENU;
+				}
+			}
+			break;
+
+		default:
+			break;
+	}
+}
+
+
+/* ================================================================
+ *   Task_UI â€” ç»Ÿä¸€é¡µé¢æ¸²æŸ“ä»»åŠ¡
+ *   åœ¨ freertos.c ä¸­å®ç°ä¸»å¾ªç¯ï¼Œè°ƒç”¨æ­¤å¤„çš„ Render + ProcessKey
+ * ================================================================ */
+
+/**
+  * @brief  Task_UI æ¯å¸§æ¸²æŸ“å…¥å£ï¼ˆç”± freertos.c çš„ Task_UI ä¸»å¾ªç¯è°ƒç”¨ï¼‰
+  * @param  key: å½“å‰æŒ‰é”®å€¼ï¼ˆ0=æ— æŒ‰é”®/è¶…æ—¶å”¤é†’ï¼‰
+  * @retval æ— 
+  */
+void Task_UI_RenderFrame(uint8_t key)
+{
+	/* æœ‰æŒ‰é”®æ—¶å¤„ç†çŠ¶æ€è½¬æ¢ */
+	if(key != 0)
+	{
+		UI_ProcessKey(key);
+	}
+
+	/* æ¸²æŸ“å½“å‰é¡µé¢ */
+	OLED_Clear();
+	switch(g_CurrentPage)
+	{
+		case PAGE_CLOCK:       Render_Clock();       break;
+		case PAGE_MENU:        Render_Menu();        break;
+		case PAGE_SETTING:     Render_Setting();     break;
+		case PAGE_STOPWATCH:   Render_Stopwatch();   break;
+		case PAGE_FLASHLIGHT:  Render_Flashlight();  break;
+		case PAGE_MPU6050:     Render_MPU6050();     break;
+		case PAGE_GAME_SELECT: Render_GameSelect();  break;
+		case PAGE_DINO_GAME:   Render_DinoGame();    break;
+		case PAGE_EMOJI:       Render_Emoji();       break;
+		case PAGE_GRADIENTER:  Render_Gradienter();  break;
+		case PAGE_SETTIME:     Render_SetTime();     break;
+		default: break;
+	}
+	OLED_Update();
 }

@@ -30,46 +30,4 @@ void Show_SetTime_UI(void);
   */
 void ChangeRTC_Time(uint8_t i,uint8_t flag);
 
-/**
-  * @brief 设置年份
-  * @retval 0-返回
-  */
-int Set_Year(void);
-
-/**
-  * @brief 设置月份
-  * @retval 0-返回
-  */
-int Set_Month(void);
-
-/**
-  * @brief 设置日期
-  * @retval 0-返回
-  */
-int Set_Day(void);
-
-/**
-  * @brief 设置小时
-  * @retval 0-返回
-  */
-int Set_Hour(void);
-
-/**
-  * @brief 设置分钟
-  * @retval 0-返回
-  */
-int Set_Min(void);
-
-/**
-  * @brief 设置秒钟
-  * @retval 0-返回
-  */
-int Set_Sec(void);
-
-/**
-  * @brief 日期时间设置主流程
-  * @retval 0-返回
-  */
-int SetTime_mainprocess(void);
-
 #endif
