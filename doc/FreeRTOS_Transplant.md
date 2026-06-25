@@ -3,6 +3,8 @@
 > **评估日期：** 2026-06-14（可行性分析）
 > **Phase 1 实施日期：** 2026-06-16
 > **Phase 2 实施日期：** 2026-06-22
+> **Phase 3 实施日期：** 2026-06-23
+> **Phase 4 实施日期：** 2026-06-25（待提交）
 > **任务划分分析日期：** 2026-06-21
 > **编译验证：** ✅ ARMCC V5.06, 0 Error, 0 Warning
 > **目标 MCU：** STM32F103RBT6 (Cortex-M3)
@@ -24,6 +26,8 @@
 - [Phase 1 实施记录](#五phase-1-实施记录--cubemx-集成-freertos)
 - [Phase 1 遇到的问题](#六phase-1-遇到的问题与解决方案)
 - [Phase 2 实施记录](#六续phase-2-实施记录--创建-task_input)
+- [Phase 3 实施记录](#phase-3-实施记录--task_ui-统一页面渲染状态机)
+- [Phase 4 实施记录](#phase-4-实施记录--task_sensor-mpu6050-独立后台采样)
 - [结论](#七结论)
 - [问题整理归纳](#八问题整理归纳)
   - [问题 5：ULONG_MAX 未定义](#问题-5x-tasknotifywait-中-ulong_max-未定义)
@@ -627,24 +631,33 @@ Dino 游戏状态 (score, pos, ...)
 | TIM2 ISR 中发送通知 | `KeyTick()` 后调用 `vTaskNotifyGiveFromISR()` | ✅ 已完成 (2026-06-22) |
 | 按键路由 | Task_Input → Task_UI 按键转发（全局按键在此处理） | ✅ 全局关机已实现；页面按键转发预留 TODO，待 Phase 3 Task_UI 创建后完成 |
 
-#### Phase 3：页面函数改造为 Task_UI 状态机
+#### Phase 3：页面函数改造为 Task_UI 状态机 ✅ 已完成 (2026-06-23)
 
-| 任务 | 说明 | 预估时间 |
-|------|------|---------|
-| 定义页面枚举 + 状态机框架 | `PAGE_CLOCK / PAGE_MENU / ... / PAGE_GRADIENTER` | 2-3 天 |
-| 改造 9 个页面函数 | while(1) → switch-case 状态机，每次渲染一帧后返回 |  |
-| 移植帧率控制 | `xTaskNotifyWait()` 33ms 超时替代 `HAL_GetTick()` 轮询 |  |
-| 页面切换机制 | `g_CurrentPage` 赋值替代函数嵌套调用 |  |
-| 移植 `__WFI()` | 移至 `vApplicationIdleHook()`，删除 9 个页面中的手动 `__WFI()` |  |
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 定义页面枚举 + 状态机框架 | `PageID_t` 枚举 + `PAGE_CLOCK` ~ `PAGE_SETTIME` 共 11 个页面 | ✅ 已完成 |
+| 改造 9 个页面函数 | while(1) → `Render_*()` 单帧函数 + `UI_ProcessKey()` 按键→状态转换 | ✅ 已完成 |
+| 统一帧率控制 | `xTaskNotifyWait(0, 0xffffffffUL, &key, pdMS_TO_TICKS(33))` 替代 `HAL_GetTick()` 轮询 | ✅ 已完成 |
+| 页面切换机制 | `g_CurrentPage = PAGE_XXX` 一行赋值，替代函数嵌套调用 | ✅ 已完成 |
+| 统一 `__WFI()` 休眠 | 移至 `vApplicationIdleHook()`，删除 9 个页面中的手动 `__WFI()` | ✅ 已完成 |
+| Task_Input → Task_UI 按键转发 | 删除 TODO 标记，实际调用 `xTaskNotify(Task_UI_Handle, key, eSetValueWithOverwrite)` | ✅ 已完成 |
+| 恐龙游戏重构 | `Dino_RenderFrame()` 单帧渲染函数 + `Dino_JumpRequest` 标志位替代 `Key_GetNum()` 轮询 | ✅ 已完成 |
+| SetTime 精简 | 删除 7 个 while(1) 函数，保留 3 个底层辅助函数 | ✅ 已完成 |
+| 编译验证 | ARMCC V5.06, 0 Error, 0 Warning | ✅ 已通过 |
 
-#### Phase 4：MPU6050 独立采样 + I2C 优化
+#### Phase 4：MPU6050 独立采样 + Sleep/Wake 功耗管理 ✅ 已完成 (2026-06-25，待提交)
 
-| 任务 | 说明 | 预估时间 |
-|------|------|---------|
-| 创建 `Task_Sensor` | 独立任务，5ms 周期采样 + 互补滤波 | 1 天 |
-| 互补滤波迁移 | 从 `menu.c` 迁移到 `Task_Sensor` 任务上下文 |  |
-| 共享数据保护 | Euler 角 (`g_Roll/Pitch/Yaw`) 用临界区保护写入 |  |
-| 评估硬件 I2C 迁移 | 研究 STM32F103 I2C1/I2C2 外设替代软件 I2C | (可选) |
+| 任务 | 说明 | 状态 |
+|------|------|------|
+| 创建 `Task_Sensor` | 独立任务，优先级 1，栈 512 bytes；`xTaskNotifyWait` 阻塞等待 `SENSOR_CMD_START/STOP` 命令 | ✅ 已完成 |
+| 互补滤波独立 | `MPU6050_Calculation_Euler_angles()` 从页面函数中解耦为独立函数，由 `Task_Sensor` 在后台连续 5ms 周期调用 | ✅ 已完成 |
+| Sleep/Wake 功耗管理 | 进入传感器页 → `MPU6050_Wake()`，离开 → `MPU6050_Sleep()`；首次运行时跳过 Wake（init 后已活跃） | ✅ 已完成 |
+| 全局变量保护 | `g_Roll/g_Pitch/g_Yaw` 写入用 `taskENTER_CRITICAL`/`taskEXIT_CRITICAL` 保护 | ✅ 已完成 |
+| `MPU6050_Sleep/Wake` 接口 | 在 `MPU6050.c/h` 中新增 `Sleep()`/`Wake()` 函数，操作 `PWR_MGMT_1` 寄存器 | ✅ 已完成 |
+| 页面联动 | `UI_ProcessKey()` 中进入 MPU6050/水平仪页 → `g_SensorActive=1` + `xTaskNotify(START)`；离开 → `g_SensorActive=0` + `xTaskNotify(STOP)` | ✅ 已完成 |
+| 硬件 I2C 迁移评估 | 研究 STM32F103 I2C1/I2C2 外设替代软件 I2C | ⏸️ 暂缓 |
+
+> **Note:** Phase 4 代码已完成但尚未提交（`git add` + `commit` 待执行），当前仅在工作树中。
 
 #### Phase 5：回归测试与栈调优
 
@@ -654,14 +667,20 @@ Dino 游戏状态 (score, pos, ...)
 | 功能回归测试 | 所有 9 个页面、按键响应、传感器数据、恐龙游戏 |  |
 | 功耗对比测试 | 移植前后电流对比（预期：空闲时自动 WFI，功耗持平或更优） |  |
 
-### 4.3 总预估
+### 4.3 总预估与实际进展
 
-| 指标 | 值 |
-|------|-----|
-| **总工作量** | **4-7 个工作日**（相较初版方案减少 1 天，因任务数从 13 → 3 大幅减少同步复杂度） |
-| 新增/修改文件 | ~8-12 个 |
-| 核心改动量 | ~400-600 行 C 代码 |
-| 风险等级 | 中等 |
+| 指标 | 计划 | 实际 |
+|------|------|------|
+| **总工作量** | **4-7 个工作日** | **Phase 1-4 已完成，剩余 Phase 5** |
+| Phase 1 | 1 天 | ✅ 1 天 (2026-06-16) |
+| Phase 2 | 1 天 | ✅ 1 天 (2026-06-22) |
+| Phase 3 | 2-3 天 | ✅ 1 天 (2026-06-23) |
+| Phase 4 | 1 天 | ✅ 1 天 (2026-06-25) |
+| 新增/修改文件 | ~8-12 个 | ~14 个（含 .gitattributes、doc） |
+| 核心改动量 | ~400-600 行 C 代码 | ~1,686 行（Phase 3 重构量大，含大量删除） |
+| 风险等级 | 中等 | 🟢 低 — 已按计划推进 |
+
+> **Phase 4 待办：** `git add` + `git commit` 尚未执行，代码当前仅在工作树中。
 
 ---
 
@@ -1035,19 +1054,132 @@ Phase 2 确认采用**手动编写原生 FreeRTOS API**，不使用 CubeMX CMSIS
 
 ---
 
+## Phase 3 实施记录 — Task_UI 统一页面渲染状态机
+
+> **执行日期：** 2026-06-23
+> **编译验证：** ✅ ARMCC V5.06, 0 Error, 0 Warning
+> **Commit：** `239fe6a`
+
+### 改造思路
+
+将 9 个裸机 while(1) 独占式页面函数拆分为两层：
+
+```
+[freertos.c]                         [menu.c]
+                                     
+Task_UI 主循环                       Render_Clock()       ← 纯绘制
+  └─ xTaskNotifyWait(33ms)           Render_Menu()        ← 纯绘制
+       └─ Task_UI_RenderFrame(key)   Render_Setting()     ← 纯绘制
+              ├─ UI_ProcessKey(key)  Render_Stopwatch()   ← 纯绘制
+              └─ switch(g_CurrentPage) ...                ← 纯绘制
+                    ├─ Render_Clock()
+                    ├─ Render_Menu()       UI_ProcessKey(key)   ← 按键→状态转换
+                    └─ ...                 g_CurrentPage = PAGE_XXX   ← 页面切换
+```
+
+| 层 | 职责 | 典型代码 |
+|:---|:---|:---|
+| `Task_UI` | 帧率控制 + 按键分发 | `xTaskNotifyWait(0, ULONG_MAX, &key, pdMS_TO_TICKS(33))` |
+| `Task_UI_RenderFrame()` | 按键处理 → 状态转换 → 渲染 → 刷新 OLED | `UI_ProcessKey(key)` + `switch(g_CurrentPage)` + `OLED_Update()` |
+| `Render_*()` | 单帧绘制（不包含 `OLED_Clear`/`Update`） | `Show_Clock_UI();` + 高亮反转 |
+| `UI_ProcessKey()` | 按键→页面状态转换 | `g_CurrentPage = PAGE_MENU;` |
+
+### 涉及文件变更
+
+| 文件 | 变更说明 |
+|:---|:---|
+| `freertos.c` | 新增 `Task_UI()` 任务函数，`vApplicationIdleHook()` 覆写为统一 `__WFI()`；`Task_Input` 按键转发从 TODO 变为实际 `xTaskNotify()` 调用 |
+| `menu.c` | 删除 9 个 while(1) 函数；新增 10 个 `Render_*()` + `UI_ProcessKey()` + `PAGE_SETTIME` 子状态机；删除所有手动 `__WFI()` |
+| `menu.h` | 新增 `PageID_t`/`SetTimeState_t` 枚举、`Task_UI_Handle` extern、`Task_UI_RenderFrame()` 声明；删除 9 个旧页面函数声明 |
+| `main.c` | 删除裸机 super loop；创建 `Task_UI`（优先级 2，栈 320 words） |
+| `dino.c/h` | 提取 `Dino_RenderFrame()` 单帧函数；`Key_GetNum()` → `Dino_JumpRequest` 标志位 |
+| `SetTime.c/h` | 删除 7 个 while(1) 函数，保留 3 个底层辅助函数 |
+| `.gitattributes` | 新增 UTF-8 编码强制 |
+
+### 设计差异点
+
+| 计划项 | 实际实现 | 原因 |
+|:---|:---|:---|
+| 11 个页面（+SETTIME） | ✅ 符合预期 | SetTime 子状态机作为独立页面处理 |
+| Render_* 为 `static` | ✅ 符合预期 | 仅 `Task_UI_RenderFrame()` 对外暴露 |
+| `OLED_Clear()` 放在 switch 前 | ✅ 符合预期 | 每帧先清再绘，避免残影 |
+| 恐龙游戏独立任务 | ❌ 保留在 Task_UI 中 | 游戏逻辑在 TIM2 ISR 中 1ms 更新，渲染只需 30FPS 读取状态，不需要独立任务 |
+
+---
+
+## Phase 4 实施记录 — Task_Sensor MPU6050 独立后台采样
+
+> **实施日期：** 2026-06-25（代码已完成，待提交 commit）
+> **提交状态：** ⚠️ 代码在工作树中，尚未 `git commit`
+
+### 设计架构
+
+```
+Task_UI (Prio 2)                        Task_Sensor (Prio 1)
+  │                                         │
+  ├─ 进入 MPU6050/水平仪页                   │
+  │   g_SensorActive = 1                     │
+  │   xTaskNotify(START) ─────────────────►  │
+  │                                         ├─ xTaskNotifyWait(portMAX_DELAY)
+  │                                         │   ├─ [首次] 跳过 Wake
+  │                                         │   ├─ [后续] MPU6050_Wake() + 5ms
+  │                                         │   ├─ warmup 20 帧 (100ms)
+  │                                         │   ├─ while(g_SensorActive) 采样
+  │                                         │   │   └─ MPU6050_Calculation_Euler_angles()
+  │                                         │   └─ MPU6050_Sleep()
+  │                                         │
+  ├─ 离开 MPU6050/水平仪页                   │
+  │   g_SensorActive = 0                     │
+  │   xTaskNotify(STOP) ─────────────────►  │  (g_SensorActive 退出循环)
+  │                                         │
+  └─ 读取 g_Roll/g_Pitch/g_Yaw (volatile)   │
+```
+
+### 涉及文件变更
+
+| 文件 | 变更说明 |
+|:---|:---|
+| `freertos.c` | 新增 `Task_Sensor()` 任务函数；`#include "Hardware/MPU6050.h"` |
+| `main.c` | `xTaskCreate(Task_Sensor, "Task_Sensor", 128, NULL, 1, &Task_Sensor_Handle)` |
+| `menu.c` | `MPU6050_Calculation_Euler_angles()` 中局部变量 `Roll/Pitch/Yaw` → 全局 `volatile g_Roll/g_Pitch/g_Yaw`；写入加 `taskENTER_CRITICAL`；`Show_MPU6050_UI()`/`Show_Gradienter_UI()` 使用 `g_` 全局变量；页面切换联动 `g_SensorActive` + `xTaskNotify(START/STOP)` |
+| `menu.h` | 新增 `Task_Sensor_Handle` extern、`g_SensorActive` extern、`SENSOR_CMD_START/STOP` 宏定义 |
+| `MPU6050.c` | 新增 `MPU6050_Sleep()` / `MPU6050_Wake()` 函数 |
+| `MPU6050.h` | 新增 `MPU6050_Sleep()` / `MPU6050_Wake()` 声明 |
+
+### 与计划的关键差异
+
+| 计划项 | 实际实现 | 原因 |
+|:---|:---|:---|
+| 互补滤波迁移到 Task_Sensor 上下文 | ❌ Euler 角计算留在 `menu.c` 中 | `MPU6050_Calculation_Euler_angles()` 依赖 menu.c 中的全局变量 (`delta`, `a`, `ax`~`gz`)，且被 `Show_Gradienter_UI()` 显示函数读取，留在 `menu.c` 更方便；Task_Sensor 仅做循环调用 |
+| 5ms 采样周期 | ✅ 符合预期 | `vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS))` |
+| Sleep/Wake 管理 | ✅ 符合预期 | `first_run` 标志位处理首次跳过，避免重复 Wake |
+
+---
+
 ## 七、结论
 
-### 综合评估：✅ 可以移植，条件成熟
+### 综合评估：✅ 移植基本完成（Phase 5 待做）
 
 | 维度 | 评分 | 说明 |
 |------|------|------|
 | 硬件资源 | 🟢 充裕 | 20KB RAM 中 ~10.8KB 已用，余量 ~9.2KB；3 用户任务方案大幅节省内存 |
 | 时钟系统 | 🟢 完全兼容 | 72MHz + DWT 延时方案确保零冲突 |
 | 驱动兼容性 | 🟢 大部分无需修改 | OLED/MyI2C/RTC/ADC/GPIO 均与 OS 无关 |
-| 架构适配 | 🟡 需要改造 | 页面 while(1) → Task_UI 状态机是主要工作量 |
+| 架构适配 | 🟢 **已完成** | 9 个 while(1) 页面函数已全部改造为 `Render_*()` 状态机架构 |
 | I2C 阻塞 | 🟡 可接受 | Task_UI 独占 OLED I2C，Task_Sensor 独占 MPU6050 I2C；无需互斥锁 |
+| 传感器采样 | 🟢 **已完成** | Task_Sensor 独立后台 5ms 连续采样 + Sleep/Wake 功耗管理 |
 
-### 移植的收益
+### 当前进度
+
+| Phase | 内容 | 状态 | 日期 |
+|:---|:---|:---|:---|
+| Phase 1 | CubeMX 集成 FreeRTOS 组件 | ✅ 已完成 | 2026-06-16 |
+| Phase 2 | 改造按键驱动（Task_Input） | ✅ 已完成 | 2026-06-22 |
+| Phase 3 | 页面函数改造为 Task_UI 状态机 | ✅ 已完成 | 2026-06-23 |
+| Phase 4 | MPU6050 独立采样 + Sleep/Wake | ✅ 已完成 | 2026-06-25 |
+| Phase 5 | 回归测试与栈调优 | ❌ 待开始 | — |
+
+### 移植已实现的收益
 
 1. **代码结构清晰** — 按键输入、UI 渲染、传感器采样三个职责分离
 2. **实时响应** — 按键任务最高优先级（3），消除当前轮询延迟
@@ -1056,18 +1188,23 @@ Phase 2 确认采用**手动编写原生 FreeRTOS API**，不使用 CubeMX CMSIS
 5. **扩展性** — Heap 余量 ~5.9KB，SRAM 总余量 ~9.2KB，未来添加 BLE、SPI Flash、心率传感器等只需新增任务
 6. **调试便利** — FreeRTOS 的任务列表、栈监控等调试工具
 
-### 移植的成本
+### 剩余工作（Phase 5）
 
-1. **工作量** — 4-7 个工作日
-2. **架构改动** — 页面函数需要重构为状态机（while(1) → switch-case）
-3. **回归风险** — 需全面测试所有功能
+1. **栈使用量分析** — 对所有任务调用 `uxTaskGetStackHighWaterMark()`，精确调优栈大小
+2. **功能回归测试** — 所有 9 个页面、按键响应、传感器数据、恐龙游戏
+3. **功耗对比测试** — 移植前后电流对比
+
+### 移植的实际成本
+
+1. **工作量** — Phase 1-4 实际约 4 个工作日（Phase 3 因准备充分仅用 1 天）
+2. **架构改动** — 页面函数重构为状态机（while(1) → switch-case）是主要工作量，已全部完成
+3. **回归风险** — 需 Phase 5 全面测试确认
 4. **Flash 占用** — FreeRTOS 内核约 6-8KB
 
 ### 建议
 
-> **如果当前功能稳定且无新增需求，可以不急于移植。** 问题十五修复后，帧率控制 + `__WFI()` 已解决主要功耗问题（预估续航改善约 3 倍）。
->
-> **如果计划添加多线程功能（如 BLE 通信、传感器数据后台采集），建议移植。** 推荐按 Phase 1→5 顺序逐步实施。
+> **Phase 5（回归测试与栈调优）建议尽快执行**，确认 Phase 1-4 所有修改的功能完整性，
+> 并调优各任务栈大小以节省 RAM。完成 Phase 5 后，FreeRTOS 移植全部完成。
 
 ---
 
