@@ -142,6 +142,16 @@ extern volatile PageID_t g_CurrentPage;
 /** @brief Task_UI 任务句柄（供 Task_Input 发送按键通知） */
 extern TaskHandle_t Task_UI_Handle;
 
+/** @brief Task_Sensor 任务句柄（供 Task_UI 发送传感器启停通知） */
+extern TaskHandle_t Task_Sensor_Handle;
+
+/** @brief 传感器活跃标志（Task_UI 写，Task_Sensor 读，原子操作无需锁） */
+extern volatile uint8_t g_SensorActive;
+
+/** @brief Task_Sensor 通知命令值 */
+#define SENSOR_CMD_START  1    /* 启动传感器采样 */
+#define SENSOR_CMD_STOP   2    /* 停止传感器采样 */
+
 /**
   * @brief Task_UI — 统一页面渲染任务
   * @note  优先级 2，栈 1280 bytes，独占 OLED I2C 总线

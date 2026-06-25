@@ -294,32 +294,36 @@ int16_t ax,ay,az;
 int16_t gx,gy,gz;
 float roll_a,pitch_a;
 float roll_g,pitch_g,yaw_g;
-float Roll=0.0,Pitch=0.0,Yaw=0.0;
+volatile float g_Roll=0.0, g_Pitch=0.0, g_Yaw=0.0;
 double Pi = 3.1415927;
+TaskHandle_t Task_Sensor_Handle = NULL;
+volatile uint8_t g_SensorActive = 0;
 
 void MPU6050_Calculation_Euler_angles(void)
 {
 	delay_ms(MPU_SAMPLE_DELAY_MS);
 	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);
 
-	roll_g = Roll + (float)gx*delta;
-	pitch_g = Pitch + (float)gy*delta;
-	yaw_g = Yaw + (float)gz*delta;
+	roll_g = g_Roll + (float)gx*delta;
+	pitch_g = g_Pitch + (float)gy*delta;
+	yaw_g = g_Yaw + (float)gz*delta;
 
 	roll_a = atan2(ay,az)*180/Pi;
 	pitch_a = atan2((-1)*ax,az)*180/Pi;
 
-	Roll =  a*roll_g + (1-a)*roll_a;
-	Pitch = a*pitch_g +(1-a)*pitch_a;
-	Yaw = a*yaw_g;
+	taskENTER_CRITICAL();
+	g_Roll =  a*roll_g + (1-a)*roll_a;
+	g_Pitch = a*pitch_g +(1-a)*pitch_a;
+	g_Yaw = a*yaw_g;
+	taskEXIT_CRITICAL();
 }
 
 void Show_MPU6050_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);
-	OLED_Printf(0,16,OLED_8X16,"Roll:  %.2f",Roll);
-	OLED_Printf(0,32,OLED_8X16,"Pitch: %.2f",Pitch);
-	OLED_Printf(0,48,OLED_8X16,"Yaw:   %.2f",Yaw);
+	OLED_Printf(0,16,OLED_8X16,"Roll:  %.2f",g_Roll);
+	OLED_Printf(0,32,OLED_8X16,"Pitch: %.2f",g_Pitch);
+	OLED_Printf(0,48,OLED_8X16,"Yaw:   %.2f",g_Yaw);
 }
 
 
@@ -362,9 +366,8 @@ void Show_emoji_UI(void)
 
 void Show_Gradienter_UI(void)
 {
-	int16_t x = GRADIENTER_CENTER_X - Roll;
-	int16_t y = GRADIENTER_CENTER_Y + Pitch;
-	MPU6050_Calculation_Euler_angles();
+	int16_t x = GRADIENTER_CENTER_X - g_Roll;
+	int16_t y = GRADIENTER_CENTER_Y + g_Pitch;
 	OLED_DrawCircle(GRADIENTER_CENTER_X, GRADIENTER_CENTER_Y, GRADIENTER_OUTER_R, OLED_UNFILLED);
 	int16_t dx = x - GRADIENTER_CENTER_X;
 	int16_t dy = y - GRADIENTER_CENTER_Y;
@@ -496,7 +499,6 @@ static void Render_Flashlight(void)
 */
 static void Render_MPU6050(void)
 {
-	MPU6050_Calculation_Euler_angles();
 	Show_MPU6050_UI();
 	OLED_ReverseArea(0,0,16,16);
 }
@@ -708,6 +710,9 @@ static void UI_ProcessKey(uint8_t key)
 						break;
 					case 4: /* MPU6050 */
 						g_CurrentPage = PAGE_MPU6050;
+						g_SensorActive = 1;
+						if (Task_Sensor_Handle != NULL)
+							xTaskNotify(Task_Sensor_Handle, SENSOR_CMD_START, eSetValueWithOverwrite);
 						break;
 					case 5: /* 游戏 */
 						g_CurrentPage = PAGE_GAME_SELECT;
@@ -720,6 +725,9 @@ static void UI_ProcessKey(uint8_t key)
 						break;
 					case 7: /* 水平仪 */
 						g_CurrentPage = PAGE_GRADIENTER;
+						g_SensorActive = 1;
+						if (Task_Sensor_Handle != NULL)
+							xTaskNotify(Task_Sensor_Handle, SENSOR_CMD_START, eSetValueWithOverwrite);
 						break;
 				}
 			}
@@ -784,12 +792,15 @@ static void UI_ProcessKey(uint8_t key)
 		case PAGE_MPU6050:
 			if(key == 3)
 			{
+				g_SensorActive = 0;
+				if (Task_Sensor_Handle != NULL)
+					xTaskNotify(Task_Sensor_Handle, SENSOR_CMD_STOP, eSetValueWithOverwrite);
 				g_CurrentPage = PAGE_MENU;
 				MenuFlag = 4;
 				move_stateFlag = 1;
 				Direct_Flag = 2;
 				Pre_item = 3;
-				Pre_x = MENU_ICON_BASE_X;
+				Pre_x = MENU_ICON_BASE_X; 
 			}
 			break;
 
@@ -852,6 +863,9 @@ static void UI_ProcessKey(uint8_t key)
 		case PAGE_GRADIENTER:
 			if(key == 3)
 			{
+				g_SensorActive = 0;
+				if (Task_Sensor_Handle != NULL)
+					xTaskNotify(Task_Sensor_Handle, SENSOR_CMD_STOP, eSetValueWithOverwrite);
 				g_CurrentPage = PAGE_MENU;
 				MenuFlag = 7;
 				move_stateFlag = 1;
