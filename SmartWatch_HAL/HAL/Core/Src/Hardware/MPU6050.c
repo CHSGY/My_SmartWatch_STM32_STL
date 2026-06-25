@@ -131,3 +131,23 @@ void MPU6050_GetData(int16_t *AccX, int16_t *AccY, int16_t *AccZ,
 	DataL = MPU6050_ReadReg(MPU6050_GYRO_ZOUT_L);
 	*GyroZ = (DataH << 8) | DataL;
 }
+
+/**
+  * @brief  MPU6050进入睡眠模式
+  * @retval 无
+  * @note   写入PWR_MGMT_1 bit6=1，进入睡眠（~5µA）
+  */
+void MPU6050_Sleep(void)
+{
+	MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x41);   /* SLEEP=1, CLKSEL=001 */
+}
+
+/**
+  * @brief  MPU6050唤醒（退出睡眠模式）
+  * @retval 无
+  * @note   写入PWR_MGMT_1 bit6=0，退出睡眠，恢复正常采样
+  */
+void MPU6050_Wake(void)
+{
+	MPU6050_WriteReg(MPU6050_PWR_MGMT_1, 0x01);   /* SLEEP=0, CLKSEL=001 */
+}
