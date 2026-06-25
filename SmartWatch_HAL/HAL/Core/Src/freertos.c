@@ -27,6 +27,7 @@
 #include "Hardware/Key.h"
 #include "power.h"
 #include "Hardware/menu.h"
+#include "Hardware/MPU6050.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -53,6 +54,7 @@
 /* USER CODE BEGIN FunctionPrototypes */
 void Task_Input(void *pvParameters);
 void Task_UI(void *pvParameters);
+void Task_Sensor(void *pvParameters);
 extern void Task_UI_RenderFrame(uint8_t key);
 /* USER CODE END FunctionPrototypes */
 
@@ -204,5 +206,57 @@ void Task_UI(void *pvParameters)
   }
 }
 
+/**
+  * @brief  Task_Sensor — MPU6050 后台采样任务
+  * @param  pvParameters: 未使用
+  * @retval 无
+  * @note   优先级 1（最低用户任务），栈 512 bytes (128 words)
+  *         平时阻塞等待 Task_UI 通知，进入传感器页时启动采样。
+  *         独占 MPU6050 I2C 总线 (PB10/PB11)，无需互斥锁。
+  */
+void Task_Sensor(void *pvParameters)
+{
+  uint32_t cmd;
+  uint8_t warmup_count;
+  (void)pvParameters;
+
+  /* 初始状态：MPU6050 在 init 后已处于活跃状态，
+   * 首次进入传感器页时无需 Wake，直接开始采样。
+   * 之后正常走 Sleep/Wake 流程。 */
+  uint8_t first_run = 1;
+
+  for (;;)
+  {
+    /* 阻塞等待 Task_UI 通知（无限等待，零 CPU 开销） */
+    xTaskNotifyWait(0, 0xffffffffUL, &cmd, portMAX_DELAY);
+
+    if (cmd == SENSOR_CMD_START)
+    {
+      if (!first_run)
+      {
+        MPU6050_Wake();
+        vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS));  /* 等待 MPU6050 退出睡眠 */
+      }
+      first_run = 0;
+
+      /* 快速收敛期：前 20 个采样（100ms）让互补滤波器稳定 */
+      for (warmup_count = 0; warmup_count < 20 && g_SensorActive; warmup_count++)
+      {
+        MPU6050_Calculation_Euler_angles();
+        vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS));
+      }
+
+      /* 正常采样循环：5ms 周期 */
+      while (g_SensorActive)
+      {
+        MPU6050_Calculation_Euler_angles();
+        vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS));
+      }
+
+      /* 离开传感器页：MPU6050 进入睡眠省电 */
+      MPU6050_Sleep();
+    }
+  }
+}
 /* USER CODE END Application */
 

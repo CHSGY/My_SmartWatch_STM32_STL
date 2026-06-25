@@ -69,6 +69,7 @@ void StartDefaultTask(void const * argument);
 /* USER CODE BEGIN PFP */
 extern void Task_Input(void *pvParameters);
 extern void Task_UI(void *pvParameters);
+extern void Task_Sensor(void *pvParameters);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -146,6 +147,8 @@ int main(void)
   xTaskCreate(Task_Input, "Task_Input", 96, NULL, 3, &Task_Input_Handle);
   /* Phase 3: 创建 Task_UI — 统一页面渲染任务（优先级 2，栈 1280 bytes） */
   xTaskCreate(Task_UI, "Task_UI", 320, NULL, 2, &Task_UI_Handle);
+  /* Phase 4: 创建 Task_Sensor — 传感器数据处理任务（优先级 1，栈 128 bytes） */
+  xTaskCreate(Task_Sensor, "Task_Sensor", 128, NULL, 1, &Task_Sensor_Handle);
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
