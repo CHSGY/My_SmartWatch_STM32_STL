@@ -20,6 +20,9 @@
 
 extern double Pi;
 
+static uint8_t Dino_GameOver_Countdown = 0;
+static uint8_t Dino_GameActive;
+
 int Dino_Score;                         /* 游戏得分 */
 uint8_t Dino_ScoreCount;                /* 分数累加计数器 */
 uint8_t Dino_JumpRequest = 0;           /* 跳跃请求标志（由 Task_UI 设置，Show_Dino 消费后清零） */
@@ -53,6 +56,7 @@ struct Object_Position{
   */
 void Game_Init(void)
 {
+    Dino_GameActive = 1;
     Dino_Score = Dino_ScoreCount = Dino_GroundCount = Dino_GroundPos = Dino_BarrierPos = Dino_BarrierFlag = Dino_CloudPos = Dino_CloudCount = Dino_JumpFlag = Dino_JumpPos = Dino_JumpCount = 0;
     Dino_JumpRequest = 0;
 }
@@ -196,10 +200,10 @@ void Show_GameOver(void)
 {
     OLED_Clear();
     OLED_ShowString(28, 24, "Game Over", OLED_8X16);
-    OLED_Update();
-    delay_ms(1000);
-    OLED_Clear();
-    OLED_Update();
+    //OLED_Update();
+    //delay_ms(1000);
+    //OLED_Clear();
+    //OLED_Update();
 }
 
 /**
@@ -210,6 +214,10 @@ void Show_GameOver(void)
   */
 void dino_tick(void)
 {
+    if(Dino_GameActive == 0)
+    {
+        return;
+    }
     Dino_ScoreCount++;
     Dino_GroundCount++;
     Dino_CloudCount++;
@@ -267,16 +275,32 @@ void dino_tick(void)
   */
 uint8_t Dino_RenderFrame(void)
 {
-    Show_Score();
-    Show_Ground();
-    Show_Barrier();
-    Show_Cloud();
-    Show_Dino();
+    if(Dino_GameOver_Countdown > 0)
+    {
+        Dino_GameOver_Countdown--;
+        Show_Score();
+        OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+        if(Dino_GameOver_Countdown == 0)
+        {
+            return 1;
+        }
+        return 0;
+    }
+    
 
     if(isColliding(&Barr, &dino))
     {
-        Show_GameOver();
-        return 1;
+        Dino_GameOver_Countdown = 30;
+        Dino_GameActive = 0;
+        //Show_GameOver();
+    }
+    else
+    {
+        Show_Score();
+        Show_Ground();
+        Show_Barrier();
+        Show_Cloud();
+        Show_Dino();
     }
     return 0;
 }

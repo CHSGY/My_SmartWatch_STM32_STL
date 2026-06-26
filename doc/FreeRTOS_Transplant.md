@@ -31,6 +31,9 @@
 - [结论](#七结论)
 - [问题整理归纳](#八问题整理归纳)
   - [问题 5：ULONG_MAX 未定义](#问题-5x-tasknotifywait-中-ulong_max-未定义)
+  - [问题 6：采样周期双重延时](#问题-6mpu6050_calculation_euler_angles-内部双重延时导致采样周期翻倍)
+  - [问题 7：Game Over 阻塞 1 秒](#问题-7show_gameover-中-delay_ms1000-阻塞-task_ui-长达-1-秒)
+  - [问题 8：Game Over 重复 I2C 传输](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)
 
 ---
 
@@ -1262,6 +1265,286 @@ Keil MDK ARMCC V5.06 编译时报错：
 **验证：** ✅ 编译通过，0 Error，0 Warning
 
 **关联文档：** FreeRTOS `task.h` 第 1907 行注释明确将 `0xffffffffUL` 列为不包含 `limits.h` 时的替代值。
+
+---
+
+### 问题 6：`MPU6050_Calculation_Euler_angles()` 内部双重延时导致采样周期翻倍
+
+**发现阶段：** Phase 5 前代码审查 — 任务栈与功能完整性分析
+
+**现象：**
+
+MPU6050 互补滤波器采样周期约为 **11ms**（~90Hz），而非预期设计的 **5ms**（200Hz），导致传感器数据更新率减半，水平仪/姿态显示响应变慢。
+
+**涉及文件：**
+
+- [menu.c:304](../SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c#L304) — `MPU6050_Calculation_Euler_angles()` 内部第一行
+- [freertos.c:253](../SmartWatch_HAL/HAL/Core/Src/freertos.c#L253) — `Task_Sensor` 采样循环中的 `vTaskDelay()`
+
+**根因分析：**
+
+`MPU6050_Calculation_Euler_angles()` 函数顶部存在一段来自裸机版的 `delay_ms(MPU_SAMPLE_DELAY_MS)`（即 5ms DWT 忙等）：
+
+```c
+// menu.c:304 — 裸机版遗迹
+void MPU6050_Calculation_Euler_angles(void)
+{
+    delay_ms(MPU_SAMPLE_DELAY_MS);       // ① 5ms DWT 忙等
+    MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);
+    // ... 互补滤波计算 ...
+}
+```
+
+与此同时，`Task_Sensor` 在 while(g_SensorActive) 循环末尾也调用了 `vTaskDelay(5ms)`：
+
+```c
+// freertos.c:250-254 — FreeRTOS 版定时
+while (g_SensorActive)
+{
+    MPU6050_Calculation_Euler_angles();  // ← 内部已 delay_ms(5)
+    vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS));  // ② 再 vTaskDelay(5)
+}
+```
+
+| 延时点 | 位置 | 延时类型 | 时间 |
+|--------|------|---------|------|
+| ① `delay_ms(5)` | `menu.c:304` Euler 函数内部 | DWT 忙等（阻塞所有任务） | 5ms |
+| MPU6050 I2C 读取 | `MPU6050_GetData()` | I2C 位碰撞（阻塞当前任务） | ~1ms |
+| ② `vTaskDelay(5)` | `freertos.c:253` 循环末尾 | FreeRTOS 睡眠（主动让出 CPU） | 5ms |
+| **实际周期** | | | **~11ms** |
+
+**为什么裸机版中没问题：** 裸机版没有 `vTaskDelay`，`delay_ms(5)` 就是唯一的采样周期控制——`delay_ms` 阻塞 5ms 后读取数据，数据就恰好是 5ms 间隔的。移植时在 Task_Sensor 中新增了 `vTaskDelay(5)` 负责定时，但遗漏了删除函数内部原有的 `delay_ms(5)`。
+
+**影响分析：**
+
+| 维度 | 预期 | 实际 |
+|------|------|------|
+| 采样周期 | 5ms | ~11ms |
+| 采样频率 | 200Hz | ~90Hz |
+| 互补滤波 α=0.9 的收敛时间 | ~25ms（5 个采样） | ~55ms |
+| 传感器页面数据更新率 | 每帧刷新 | 约 3 帧才更新一次 |
+
+**解决方案：**
+
+删除 `menu.c` 第 304 行的 `delay_ms(MPU_SAMPLE_DELAY_MS)`，采样周期由 Task_Sensor 的 `vTaskDelay(pdMS_TO_TICKS(MPU_SAMPLE_DELAY_MS))` 单一控制：
+
+```diff
+  void MPU6050_Calculation_Euler_angles(void)
+  {
+-     delay_ms(MPU_SAMPLE_DELAY_MS);       // 删除：裸机版遗迹，FreeRTOS 中由 vTaskDelay 负责
+      MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);
+      // ... 互补滤波计算 ...
+  }
+```
+
+| 方案 | 优点 | 风险 | 选择 |
+|------|------|------|------|
+| 删除 `delay_ms(5)` | 恢复 200Hz 采样率，零额外代码改动 | 🟢 低——vTaskDelay 已保证采样周期 | ✅ |
+
+**验证方法：** 修改后实测传感器页的 Roll/Pitch/Yaw 更新率应明显提升，水平仪响应更平滑。
+
+**修复状态：** ✅ **已修复**（2026-06-25 手动删除 `delay_ms(MPU_SAMPLE_DELAY_MS)`）
+
+---
+
+### 问题 7：`Show_GameOver()` 中 `delay_ms(1000)` 阻塞 Task_UI 长达 1 秒
+
+**发现阶段：** Phase 5 前代码审查 — 任务栈与功能完整性分析
+
+**现象：**
+
+恐龙游戏碰撞结束时，屏幕显示 "Game Over" 后系统冻结 **1 秒**，期间任何按键无响应、页面不渲染。
+
+**涉及文件：**
+
+- [dino.c:195-203](../SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c#L195-L203) — `Show_GameOver()` 函数
+- [menu.c:987-1013](../SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c#L987-L1013) — `Task_UI_RenderFrame()` 调用路径
+
+**根因分析：**
+
+`Show_GameOver()` 使用 DWT 忙等 `delay_ms(1000)` 实现 1 秒的"Game Over"画面保持：
+
+```c
+// dino.c:195-203
+void Show_GameOver(void)
+{
+    OLED_Clear();
+    OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+    OLED_Update();
+    delay_ms(1000);     // 🔴 1 秒 DWT 忙等，完全阻塞 Task_UI
+    OLED_Clear();
+    OLED_Update();
+}
+```
+
+该函数由 `Dino_RenderFrame()` 在碰撞检测为 true 时调用，而 `Dino_RenderFrame()` 由 `Task_UI` 每帧调用：
+
+```
+Task_UI (Prio 2)
+  └─ xTaskNotifyWait(33ms)
+       └─ Task_UI_RenderFrame(key)
+            ├─ UI_ProcessKey(key)
+            └─ switch(g_CurrentPage)
+                 └─ Render_DinoGame()
+                      └─ Dino_RenderFrame()       ← 33ms 帧调用
+                           └─ if(碰撞) Show_GameOver()
+                                ├─ OLED_Update()  ← ~12ms I2C OK
+                                ├─ delay_ms(1000) ← 🔴 1000ms 忙等!
+                                └─ OLED_Update()  ← ~12ms I2C
+```
+
+`delay_ms(1000)` 是 DWT 周期计数忙等，期间：
+- **Task_UI** 完全阻塞，无法渲染，无法处理后续按键
+- **Task_Input**（优先级 3）可以抢占运行，但 Task_UI 本身没有任何进展
+- **空闲任务**无法运行，`__WFI()` 休眠不生效——MCU 在这 1 秒内满速运行
+
+**影响分析：**
+
+| 维度 | 影响 |
+|------|------|
+| 系统响应 | 1 秒完全冻结，Game Over 后按返回键无效 |
+| 功耗 | 1 秒 72MHz 满速忙等，空闲本应有 `__WFI()` 休眠 |
+| 用户体验 | 游戏结束 → 1 秒冻结 → 跳回菜单，体验差 |
+
+**解决方案：**
+
+将 `Show_GameOver()` 改为非阻塞状态机——在 Task_UI 的 33ms 帧循环中通过超时计数控制显示持续时间：
+
+```c
+// dino.c — 新增倒计时变量
+static uint8_t Dino_GameOver_Countdown = 0;
+
+// dino.c — 新增游戏活跃标志（控制 dino_tick 是否继续计分）
+uint8_t Dino_GameActive = 0;
+
+// dino.c — 修改后的 Dino_RenderFrame()
+uint8_t Dino_RenderFrame(void)
+{
+    if(Dino_GameOver_Countdown > 0)
+    {
+        Dino_GameOver_Countdown--;
+        Show_Score();
+        OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+        if(Dino_GameOver_Countdown == 0)
+            return 1;             // 倒计时结束，跳转回菜单
+        return 0;                 // 仍在显示 Game Over
+    }
+
+    // 正常游戏渲染
+    if(isColliding(&Barr, &dino))
+    {
+        Dino_GameOver_Countdown = 30;   // 30 帧 × 33ms ≈ 1 秒
+        Dino_GameActive = 0;            // 停止计分+位移
+        return 0;                       // 保留碰撞瞬间的画面
+    }
+
+    // ... 正常绘制 ...
+    return 0;
+}
+
+// dino_tick() — 增加 GameActive 守卫
+void dino_tick(void)
+{
+    if(Dino_GameActive == 0) return;   // 游戏已结束，不再更新任何数据
+    // ... 原计分/位移逻辑不变 ...
+}
+```
+
+| 方案 | 优点 | 工作量 |
+|------|------|--------|
+| 状态机改造 | 零阻塞，保持帧率，按键可打断 | ~30 分钟 |
+| 改为 `vTaskDelay(1000)` | 至少让出 CPU 给空闲任务，降低功耗 | 5 分钟 | 
+| **已实现：帧计数方案** | **零阻塞 + 零额外代码量** | ✅ |
+
+**实际采用的修复方案：**
+
+在 `dino.c` 中新增一个 `static uint8_t Dino_GameOver_Countdown` 计数器：
+
+- **碰撞时**：`Dino_GameOver_Countdown = 30`，不调用 `Show_GameOver()`，直接 `return 0`（这帧保留碰撞画面，让玩家看到恐龙撞到障碍物的瞬间）
+- **后续 30 帧（~1 秒）**：`Dino_RenderFrame()` 的倒计时分支接管，每帧显示分数 + "Game Over" 文字，计数器递减
+- **倒计时到 0**：`return 1`，Task_UI 跳转回游戏选择页
+- 同时新增 `Dino_GameActive` 标志位，碰撞时清零，`dino_tick()` 中检测到已结束则跳过所有计分/位移逻辑
+
+**涉及改动：**
+| 文件 | 变更 |
+|------|------|
+| `dino.c` | 新增 `Dino_GameOver_Countdown`、`Dino_GameActive` 两个 `static` 变量；`Dino_RenderFrame()` 增加倒计时分支；`dino_tick()` 增加 `GameActive` 守卫；`Game_Init()` 初始化 `GameActive = 1` |
+| `dino.h` | 无需修改（`Dino_GameActive` 仅内部使用，已设为 `static`） |
+
+**验证：** 碰撞后恐龙/障碍物/地面/分数全部立即停止，仅 "Game Over" 文字显示 ~1 秒后返回菜单。
+
+**修复状态：** ✅ **已修复**（2026-06-25 手动实现帧计数方案）
+
+**关联问题：** 同时修复 [问题 8](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍) 中的重复 OLED_Update 问题。
+
+---
+
+### 问题 8：`Show_GameOver()` 中 `OLED_Update()` 与 `Task_UI` 重复调用导致单帧 I2C 翻倍
+
+**发现阶段：** Phase 5 前代码审查 — 任务栈与功能完整性分析
+
+**现象：**
+
+恐龙游戏结束时，单帧内两次全屏 OLED I2C 传输（~24-56ms），可能造成该帧渲染超时。
+
+**涉及文件：**
+
+- [dino.c:199](../SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c#L199) — `Show_GameOver()` 内部的 `OLED_Update()`
+- [menu.c:1012](../SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c#L1012) — `Task_UI_RenderFrame()` 末尾的 `OLED_Update()`
+
+**根因分析：**
+
+`Show_GameOver()` 内部调用了一次 `OLED_Update()` 将 "Game Over" 文字刷到屏幕，但返回后 `Task_UI_RenderFrame()` 在 switch 语句之后又会调用一次 `OLED_Update()`：
+
+```
+Task_UI_RenderFrame(key)
+  ├─ if(key) UI_ProcessKey(key)
+  ├─ OLED_Clear()
+  ├─ switch(g_CurrentPage)
+  │    └─ PAGE_DINO_GAME:
+  │         └─ Render_DinoGame()
+  │              └─ Dino_RenderFrame()
+  │                   └─ 碰撞 → Show_GameOver()
+  │                        ├─ OLED_Clear()        ← 清 buffer
+  │                        ├─ OLED_ShowString()   ← 写 "Game Over"
+  │                        ├─ OLED_Update()       ← 🔴 第一次 I2C 传输 (~12-28ms)
+  │                        └─ delay_ms(1000)
+  └─ OLED_Update()                                 ← 🔴 第二次 I2C 传输 (~12-28ms)
+```
+
+两次 `OLED_Update()` 之间没有 `OLED_Clear()`（buffer 内容保持不变），传输的是相同的数据，纯属浪费。
+
+**影响分析：**
+
+| 项目 | 第一次 OLDE_Update | 第二次 OLDE_Update | 合计 |
+|------|-------------------|-------------------|------|
+| I2C 传输时间 | ~12-28ms | ~12-28ms | **~24-56ms** |
+| 33ms 帧预算 | — | — | 超出预算风险 |
+
+如果 `OLED_Update()` 单次传输已达 ~28ms，连续两次将超过 33ms 的帧周期，可能导致下一次 `xTaskNotifyWait()` 被延迟触发，帧率短暂下降。
+
+**解决方案：**
+
+移除 `Show_GameOver()` 中的 `OLED_Update()` 调用，仅操作 OLED buffer。Task_UI 的末尾统一 `OLED_Update()` 会负责将内容刷到屏幕：
+
+```diff
+  void Show_GameOver(void)
+  {
+      OLED_Clear();
+      OLED_ShowString(28, 24, "Game Over", OLED_8X16);
+-     OLED_Update();          // 删除：Task_UI 末尾统一 Update
+      delay_ms(1000);
+      OLED_Clear();
+-     OLED_Update();          // 删除：同上
+  }
+```
+
+| 方案 | 优点 | 风险 |
+|------|------|------|
+| 移除两个 `OLED_Update()` | 消除重复传输，恢复 33ms 帧预算 | 🟢 低——Task_UI 已保证每帧末尾有一次 OLED_Update |
+| 改为 `OLED_UpdateArea()` 局部刷新 | 更节省 I2C 带宽 | 🟡 需要额外计算 Game Over 文字区域坐标 |
+
+**验证方法：** 游戏结束时逻辑帧时间应降至单次 OLED_Update 的水平（~12-28ms），不再出现帧率抖动。
 
 ---
 

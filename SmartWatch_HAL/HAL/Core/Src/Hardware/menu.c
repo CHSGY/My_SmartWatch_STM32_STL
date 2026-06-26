@@ -301,7 +301,6 @@ volatile uint8_t g_SensorActive = 0;
 
 void MPU6050_Calculation_Euler_angles(void)
 {
-	delay_ms(MPU_SAMPLE_DELAY_MS);
 	MPU6050_GetData(&ax,&ay,&az,&gx,&gy,&gz);
 
 	roll_g = g_Roll + (float)gx*delta;
