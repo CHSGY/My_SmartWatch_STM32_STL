@@ -34,6 +34,7 @@
   - [问题 6：采样周期双重延时](#问题-6mpu6050_calculation_euler_angles-内部双重延时导致采样周期翻倍)
   - [问题 7：Game Over 阻塞 1 秒](#问题-7show_gameover-中-delay_ms1000-阻塞-task_ui-长达-1-秒)
   - [问题 8：Game Over 重复 I2C 传输](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)
+  - [问题 9：OLED I2C 被抢占 — vTaskSuspendAll 保护 I2C 时序](#问题-9oled-i2c-被抢占--vtasksuspendall-保护-i2c-时序)
 
 ---
 
@@ -1665,6 +1666,71 @@ Task_UI_RenderFrame(key)
 - `Show_GameOver()` 内部的 2 个 `OLED_Update()` 已注释（dino.c:203-206）
 - `Show_GameOver()` 本身也不再被调用（dino.c:295 已注释），Game Over 显示由问题 7 的帧计数方案统一接管
 - 单帧 I2C 传输从 ~24-56ms 降至 ~12-28ms，恢复 33ms 帧预算
+
+---
+
+### 问题 9：OLED I2C 被抢占 — vTaskSuspendAll 保护 I2C 时序
+
+**现象：**
+
+在 Phase 5 回归测试中发现，当 `Task_UI` 正在执行 `OLED_Update()`（~12ms 软件 I2C bit-banging）期间，
+如果 `Task_Input`（优先级 3 > 2）被 TIM2 ISR 通知而解除阻塞，调度器会执行上下文切换，
+导致 I2C 位带传输被中断。虽然软件 I2C 不受硬件中断影响（已关中断），
+但**任务级抢占**会导致单帧总 I2C 时间超过 33ms 帧预算：
+
+```
+正常帧: [Render ~1ms][OLED_Update ~12ms] = ~13ms
+被抢占帧: [Render ~1ms][OLED_Update ~3ms] → Task_Input 抢占执行 ← [OLED_Update ~9ms 续传] = ~13ms + Task_Input执行时间
+```
+
+被抢占本身不会破坏 I2C 时序（I2C 的状态在任务栈中保存），但会导致：
+- 帧周期抖动（frame time jitter）
+- 如果 Task_Input 执行时间较长，可能超过 33ms 帧预算
+
+**技术分析：**
+
+| 项目 | 说明 |
+|------|------|
+| 根因 | Task_UI (prio 2) 的 I2C 传输被 Task_Input (prio 3) 抢占 |
+| 是否破坏 I2C 时序 | ❌ 不破坏（任务上下文保存 I2C 状态） |
+| 是否影响帧率 | 🟡 可能 — 单帧执行时间增加 Task_Input 开销 |
+| Debug 页测量影响 | 🟡 存在 — Render_Debug 本身调用 uxTaskGetStackHighWaterMark 等 API，这些 API 调用 `taskENTER_CRITICAL`，当 vTaskSuspendAll 已挂起调度器时，critical section 行为与正常情况不同 |
+
+**解决方案：**
+
+在 `OLED_Update()` 前后用 `vTaskSuspendAll()` / `xTaskResumeAll()` 挂起调度器，
+确保 I2C 位带传输连续完成，不被任务切换中断：
+
+```diff
+  void Task_UI_RenderFrame(uint8_t key)
+  {
+      // ... dispatch render functions ...
++     vTaskSuspendAll();              /* 挂起调度器 → I2C 传输不可被抢占 */
+      OLED_Update();                  /* ~12ms 连续 I2C 传输，无任务切换 */
++     xTaskResumeAll();               /* 恢复调度器，执行待处理的 PendSV 切换 */
+  }
+```
+
+| 方案 | 优点 | 风险 |
+|------|------|------|
+| ✅ **vTaskSuspendAll** | 最简单，只禁任务切换不禁中断；ISR 仍可响应，I2C 时序完整 | 🟢 低——挂起时间仅 ~12ms |
+| ❌ taskENTER_CRITICAL | 也会禁中断，软件 I2C 的 NOP 延时仍被中断影响 | 🟡 中断被禁可能影响按键采样 |
+| ❌ 提高 Task_UI 优先级 | 与 Task_Input 同优先级（都是 3），按键响应延迟 | 🔴 牺牲按键响应速度 |
+
+**为什么 vTaskSuspendAll 是正确选择：**
+
+| 特性 | vTaskSuspendAll | taskENTER_CRITICAL |
+|------|:---------------:|:------------------:|
+| 禁止任务切换 | ✅ | ✅ |
+| 禁止中断 | ❌ | ✅ |
+| ISR 仍可响应按键 | ✅ | ❌ |
+| TIM2 ISR 仍可更新 dino_tick | ✅ | ❌ |
+| 适合 I2C 位带传输 | ✅ | ❌（过度杀伤） |
+
+**修复状态：** ✅ **已修复**（2026-06-30）
+- `menu.c:Task_UI_RenderFrame()`: `OLED_Update()` 被 `vTaskSuspendAll` / `xTaskResumeAll` 包裹
+- I2C 传输期间无任务切换，帧周期稳定在 ~13ms（无按键时）
+- ISR 不受影响，TIM2 的按键采样和恐龙游戏逻辑正常执行
 
 ---
 

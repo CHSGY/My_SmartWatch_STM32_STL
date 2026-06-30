@@ -1065,5 +1065,8 @@ void Task_UI_RenderFrame(uint8_t key)
 		case PAGE_DEBUG:       Render_Debug();       break;
 		default: break;
 	}
-	OLED_Update();
+	/* 挂起调度器 → 防止 I2C 位带传输被 Task_Input(prio3) 抢占导致帧时间抖动 */
+	vTaskSuspendAll();
+	OLED_Update();                              /* ~12ms 连续 I2C 传输，无任务切换 */
+	xTaskResumeAll();                           /* 恢复调度器，执行待处理的 PendSV 切换 */
 }
