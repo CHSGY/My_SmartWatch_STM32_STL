@@ -664,11 +664,126 @@ Dino 游戏状态 (score, pos, ...)
 
 #### Phase 5：回归测试与栈调优
 
+> **设计方案：** 采用 **OLED Debug 页面**进行栈使用量分析，入口方式为 **方案 B：设置页扩展**。
+> - 入口路径：时钟 → 菜单 → 设置页 → KEY2 翻到第 3 项 "Debug" → KEY3 进入
+> - 不采用串口方案（方案 1），理由：
+>   - 需要额外 USB-TTL 串口板硬件 + CubeMX 重新生成 USART 代码，有覆盖手写代码风险
+>   - 栈调优只需读取 5 个 `uxTaskGetStackHighWaterMark` 返回值 + 1 个 `xPortGetFreeHeapSize`，串口方案过度
+> - Debug 入口放在设置页，语义自然（系统工具），无需像素图标，代码改动量仅 ~4 处
+
 | 任务 | 说明 | 预估时间 |
 |------|------|---------|
-| 栈使用量分析 | 对所有任务调用 `uxTaskGetStackHighWaterMark()` | 1-2 天 |
-| 功能回归测试 | 所有 9 个页面、按键响应、传感器数据、恐龙游戏 |  |
-| 功耗对比测试 | 移植前后电流对比（预期：空闲时自动 WFI，功耗持平或更优） |  |
+| 前置准备 | 在 `FreeRTOSConfig.h` 启用 `INCLUDE_uxTaskGetStackHighWaterMark`；提交 Phase 4 代码 | 15 min |
+| ① menu.h — PageID_t 加 `PAGE_DEBUG` | 在 `SETTIME` 与 `PAGE_COUNT` 之间插入 | 2 min |
+| ② menu.c — `Show_Debug_UI()` + `Render_Debug()` | 使用 OLED_Printf + GoBack 图标，展示 5 任务栈水位 + 堆空闲，参考 MPU6050 模式约 25 行 | 15 min |
+| ③ menu.c — `Task_UI_RenderFrame` 加 `case PAGE_DEBUG` | 注册到渲染 dispatch | 1 min |
+| ④ menu.c — `UI_ProcessKey` 处理 `PAGE_SETTING` 扩展 + `PAGE_DEBUG` 按键 | SettingFlag 范围 2→3，KEY3 确认进入/返回 | 10 min |
+| 栈水位测量与调优 | 运行所有功能→记录峰值→调整栈大小→复测 | 1-2 天 |
+| 功能回归测试 | 所有 11 个页面、按键响应、传感器数据、恐龙游戏、SetTime | 1-2 天 |
+| 功耗对比测试 | 移植前后电流对比（预期：空闲时自动 WFI，功耗持平或更优） | 1 天 |
+
+##### 实施细节：设置页扩展
+
+**设置页当前状态：**
+
+```
+SettingFlag 1 → [← 返回]         (KEY3 → 回时钟)
+SettingFlag 2 → [Set DateTime]   (KEY3 → 进入 SetTime 状态机)
+```
+
+**扩展后：**
+
+```
+SettingFlag 1 → [← 返回]
+SettingFlag 2 → [Set DateTime]
+SettingFlag 3 → [Debug]          ← 新增选项
+```
+
+**改动点汇总（4 处）：**
+
+| # | 文件 | 改动 | 代码 |
+|:---|:---|:---|:---|
+| ① | `menu.h` PageID_t | 新增 `PAGE_DEBUG` | 插在 `PAGE_SETTIME` 与 `PAGE_COUNT` 之间 |
+| ② | `menu.c` 新增函数 | `Show_Debug_UI()` + `Render_Debug()` | ~25 行，参考 `Show_MPU6050_UI()` 模式 |
+| ③ | `menu.c` switch | `case PAGE_DEBUG: Render_Debug(); break;` | 1 行 |
+| ④ | `menu.c` UI_ProcessKey | `PAGE_SETTING` case 的 `SettingFlag` 范围从 1~2 扩展到 1~3；`case 3: g_CurrentPage = PAGE_DEBUG;`；新增 `case PAGE_DEBUG:` 处理 KEY3 返回 | ~10 行 |
+
+**设置页 KEY 处理变更（`UI_ProcessKey`）：**
+
+```c
+// 修改前：
+case PAGE_SETTING:
+    if(key == 1) { if(--SettingFlag == 0) SettingFlag = 2; }
+    else if(key == 2) { if(++SettingFlag == 3) SettingFlag = 1; }
+    else if(key == 3) {
+        if(SettingFlag == 1) { g_CurrentPage = PAGE_CLOCK; }
+        else { /* 进入设置时间 */ g_CurrentPage = PAGE_SETTIME; }
+    }
+
+// 修改后：
+case PAGE_SETTING:
+    if(key == 1) { if(--SettingFlag == 0) SettingFlag = 3; }       // 2→3
+    else if(key == 2) { if(++SettingFlag == 4) SettingFlag = 1; }  // 3→4
+    else if(key == 3) {
+        if(SettingFlag == 1) { g_CurrentPage = PAGE_CLOCK; }
+        else if(SettingFlag == 2) { g_CurrentPage = PAGE_SETTIME; }
+        else { g_CurrentPage = PAGE_DEBUG; }                       // ← 新增
+    }
+
+case PAGE_DEBUG:                                                     // ← 新增
+    if(key == 3) { g_CurrentPage = PAGE_SETTING; SettingFlag = 3; } // 返回设置页
+```
+
+##### OLED Debug 页面渲染设计
+
+利用现有 128×64 OLED 和 6×8 字体，直接在手表上显示调试信息：
+
+```
+┌─────────────────────┐
+│[←]  ← GoBack 16×16  │
+│ Inp:  20/ 96 w       │  ← Task_Input: 峰值/总量 words
+│ UI:  180/320 w       │  ← Task_UI
+│ Sen:  28/128 w       │  ← Task_Sensor
+│ Idle: 24/128 w       │  ← Idle Task
+│ Tmr:  48/256 w       │  ← Timer Task
+│ Heap: 5840/10240 B   │  ← 空闲堆/总堆
+│ KEY3=返回设置        │
+└─────────────────────┘
+```
+
+- **渲染模式：** 完全参照 `Show_MPU6050_UI()` —— `OLED_ShowImage(0,0,16,16,GoBack)` + 多行 `OLED_Printf(0,Y,OLED_6X8, fmt, ...)`
+- **数据来源：** `uxTaskGetStackHighWaterMark(handle)` + `xPortGetFreeHeapSize()`
+- **自干扰分析：** `uxTaskGetStackHighWaterMark` 返回**历史峰值**（自任务创建以来最小值）。先遍历完所有 11 个正常页面（记录峰值栈使用），再进入 Debug 页读数。Debug 页面自身的绘制栈消耗不计入峰值，测量准确
+- **返回方式：** KEY3 → 回设置页，`SettingFlag=3`（保持 Debug 选项选中状态）
+
+##### Stack High Water Mark 测量机制
+
+```
+uxTaskGetStackHighWaterMark(task_handle) 返回:
+   自任务创建以来，栈区残留 0xa5a5a5a5 填充值的 word 数量（最小值）
+
+峰值使用量 = 总栈大小 - uxTaskGetStackHighWaterMark()
+
+调优目标: 峰值使用量 × 1.5 ≤ 调整后栈大小（保留 50% 安全余量）
+```
+
+##### 栈调整决策矩阵
+
+| 任务 | 当前栈 (words) | 预期峰值 | 调整后 |
+|------|:-----------:|:--------:|:-----:|
+| Task_Input | 96 | < 30 | 可能降至 48-64 |
+| Task_UI | 320 | 待测（最深调用链） | 保留或微调 |
+| Task_Sensor | 128 | < 50 | 可能降至 64-96 |
+| Idle Task | 128 | < 30 | 可降至 64 |
+| Timer Task | 256 | < 50 | 可降至 128 |
+
+> **测试流程：** 
+> 1. 编译烧录固件（含 `INCLUDE_uxTaskGetStackHighWaterMark=1` + Debug 页面）
+> 2. 依次遍历所有 11 个页面，操作各功能（按键、游戏碰撞、传感器采样）
+> 3. 操作：时钟 → KEY3 → 菜单 → 滑到"设置" → KEY3 → 设置页 → KEY2 翻到 "Debug" → KEY3 进入
+> 4. 拍照记录各任务水位
+> 5. 根据峰值数据调整 `xTaskCreate()` 中的栈深度参数
+> 6. 缩小栈后重新运行，确认 `uxTaskGetStackHighWaterMark` 余量 > 30%
 
 ### 4.3 总预估与实际进展
 
@@ -1545,6 +1660,11 @@ Task_UI_RenderFrame(key)
 | 改为 `OLED_UpdateArea()` 局部刷新 | 更节省 I2C 带宽 | 🟡 需要额外计算 Game Over 文字区域坐标 |
 
 **验证方法：** 游戏结束时逻辑帧时间应降至单次 OLED_Update 的水平（~12-28ms），不再出现帧率抖动。
+
+**修复状态：** ✅ **已修复**（2026-06-25，与问题 7 同步修复）
+- `Show_GameOver()` 内部的 2 个 `OLED_Update()` 已注释（dino.c:203-206）
+- `Show_GameOver()` 本身也不再被调用（dino.c:295 已注释），Game Over 显示由问题 7 的帧计数方案统一接管
+- 单帧 I2C 传输从 ~24-56ms 降至 ~12-28ms，恢复 33ms 帧预算
 
 ---
 

@@ -53,7 +53,7 @@ RTC_HandleTypeDef hrtc;
 
 TIM_HandleTypeDef htim2;
 
-osThreadId defaultTaskHandle;
+//osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 /* Phase 3: ClockUI_Move_Flag removed — replaced by g_CurrentPage state machine */
 /* USER CODE END PV */
@@ -64,7 +64,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_RTC_Init(void);
-void StartDefaultTask(void const * argument);
+//void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 extern void Task_Input(void *pvParameters);
@@ -139,8 +139,8 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  //osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  //defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* Phase 2: 创建 Task_Input — 按键处理任务（优先级 3，栈 384 bytes） */
@@ -449,16 +449,16 @@ static void MX_GPIO_Init(void)
   * @retval None
   */
 /* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
-{
+// void StartDefaultTask(void const * argument)
+// {
   /* USER CODE BEGIN 5 */
   /* Infinite loop */
-  for(;;)
-  {
-    osDelay(1);
-  }
+  // for(;;)
+  // {
+  //   osDelay(1);
+  // }
   /* USER CODE END 5 */
-}
+// }
 
 /**
   * @brief  This function is executed in case of error occurrence.

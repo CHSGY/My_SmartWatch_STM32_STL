@@ -33,6 +33,7 @@ typedef enum {
     PAGE_EMOJI,           /* 表情动画 */
     PAGE_GRADIENTER,      /* 水平仪 */
     PAGE_SETTIME,         /* 设置时间 */
+    PAGE_DEBUG,           /* Debug 信息 */
     PAGE_COUNT            /* 页面总数 */
 } PageID_t;
 

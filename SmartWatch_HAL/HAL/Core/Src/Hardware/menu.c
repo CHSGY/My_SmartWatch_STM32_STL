@@ -22,6 +22,7 @@
 #include "Hardware/dino.h"
 #include "Hardware/SetTime.h"
 #include "power.h"
+#include "timers.h"
 #include <math.h>
 
 /********************全局变量************************/
@@ -114,6 +115,7 @@ void Show_Setting_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);
 	OLED_ShowString(0,16,"Set DateTime",OLED_8X16);
+	OLED_ShowString(0,32,"Debug",OLED_8X16);
 }
 
 
@@ -423,6 +425,7 @@ static void Render_Setting(void)
 	{
 		case 1: OLED_ReverseArea(0,0,16,16);    break;  /* [返回] */
 		case 2: OLED_ReverseArea(0,16,96,16);   break;  /* [设置时间日期] */
+		case 3: OLED_ReverseArea(0,32,40,16);   break;  /* [Debug] */
 		default: break;
 	}
 }
@@ -612,6 +615,46 @@ static void Render_SetTime(void)
 }
 
 
+/*
+* @brief Debug 信息显示
+* @note  使用 uxTaskGetStackHighWaterMark 读取各任务栈剩余水位(words)，
+*        xPortGetFreeHeapSize 读取堆空闲量。供 Phase 5 栈调优使用。
+*/
+static void Show_Debug_UI(void)
+{
+	UBaseType_t inp_hwm, ui_hwm, sen_hwm, idle_hwm, tmr_hwm;
+	size_t free_heap;
+
+	inp_hwm = uxTaskGetStackHighWaterMark(Task_Input_Handle);
+	ui_hwm  = uxTaskGetStackHighWaterMark(Task_UI_Handle);
+	sen_hwm = uxTaskGetStackHighWaterMark(Task_Sensor_Handle);
+	idle_hwm = uxTaskGetStackHighWaterMark(xTaskGetIdleTaskHandle());
+	tmr_hwm = uxTaskGetStackHighWaterMark(xTimerGetTimerDaemonTaskHandle());
+
+	free_heap = xPortGetFreeHeapSize();
+
+	/* 渲染 GoBack 图标 */
+	OLED_ShowImage(0, 0, 16, 16, GoBack);
+
+	/* 按行显示各任务栈水位 + 堆空闲量 (6x8 字体) */
+	OLED_Printf(20, 16, OLED_6X8, "Inp:%3u/ 96w", inp_hwm);
+	OLED_Printf(20, 24, OLED_6X8, "UI:%4u/320w", ui_hwm);
+	OLED_Printf(20, 32, OLED_6X8, "Sen:%3u/128w", sen_hwm);
+	OLED_Printf(20, 40, OLED_6X8, "Idle:%3u/128w", idle_hwm);
+	OLED_Printf(20, 48, OLED_6X8, "Tmr:%4u/256w", tmr_hwm);
+	OLED_Printf(20, 56, OLED_6X8, "Heap:%5u/10240B", free_heap);
+}
+
+/*
+* @brief Debug 页面渲染
+*/
+static void Render_Debug(void)
+{
+	Show_Debug_UI();
+	OLED_ReverseArea(0, 0, 16, 16);  /* 反显 GoBack 图标表示选择中 */
+}
+
+
 /* ================================================================
  *   UI_ProcessKey — 按键→状态转换（由 Task_UI 调用）
  * ================================================================ */
@@ -651,11 +694,11 @@ static void UI_ProcessKey(uint8_t key)
 		case PAGE_SETTING:
 			if(key == 1)
 			{
-				if(--SettingFlag == 0) SettingFlag = 2;
+				if(--SettingFlag == 0) SettingFlag = 3;
 			}
 			else if(key == 2)
 			{
-				if(++SettingFlag == 3) SettingFlag = 1;
+				if(++SettingFlag == 4) SettingFlag = 1;
 			}
 			else if(key == 3)
 			{
@@ -664,12 +707,17 @@ static void UI_ProcessKey(uint8_t key)
 					g_CurrentPage = PAGE_CLOCK;
 					Clockmoveflag = 1;
 				}
-				else
+				else if(SettingFlag == 2)
 				{
 					/* 进入设置时间状态机 */
 					g_CurrentPage = PAGE_SETTIME;
 					Key_CursorFlag = 1;
 					settime_state = SETTIME_MENU;
+				}
+				else
+				{
+					/* 进入 Debug 页面 */
+					g_CurrentPage = PAGE_DEBUG;
 				}
 			}
 			break;
@@ -967,6 +1015,14 @@ static void UI_ProcessKey(uint8_t key)
 			}
 			break;
 
+		case PAGE_DEBUG:
+			if(key == 3)
+			{
+				g_CurrentPage = PAGE_SETTING;
+				SettingFlag = 3;  /* 返回后保持 Debug 选项选中 */
+			}
+			break;
+
 		default:
 			break;
 	}
@@ -1006,6 +1062,7 @@ void Task_UI_RenderFrame(uint8_t key)
 		case PAGE_EMOJI:       Render_Emoji();       break;
 		case PAGE_GRADIENTER:  Render_Gradienter();  break;
 		case PAGE_SETTIME:     Render_SetTime();     break;
+		case PAGE_DEBUG:       Render_Debug();       break;
 		default: break;
 	}
 	OLED_Update();

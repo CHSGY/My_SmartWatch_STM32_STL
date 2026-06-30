@@ -3,5 +3,7 @@
     "files.encoding": "gbk",
     "[markdown]": {
         "files.encoding": "utf8"
-    }
+    },
+    "commentTranslate.source": "Bing",
+    "commentTranslate.targetLanguage": "zh-CN"
 }
