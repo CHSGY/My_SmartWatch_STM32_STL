@@ -437,9 +437,11 @@ static void Render_Menu(void)
 {
 	if(MenuFlag == 1)
 	{
-		/* 位置1是[返回]，无滑动动画 */
+		/* 位置1是[返回]，无滑动动画，但仍需绘制右侧相邻图标 */
 		OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);
 		OLED_ShowImage(MENU_ICON_BASE_X, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[0]);
+		OLED_ShowImage(MENU_ICON_BASE_X + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[1]);
+		OLED_ShowImage(MENU_ICON_BASE_X + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[2]);
 	}
 	else
 	{

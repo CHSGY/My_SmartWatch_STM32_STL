@@ -36,6 +36,7 @@
   - [问题 8：Game Over 重复 I2C 传输](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)
   - [问题 9：OLED I2C 被抢占 — vTaskSuspendAll 保护 I2C 时序](#问题-9oled-i2c-被抢占--vtasksuspendall-保护-i2c-时序)
   - [问题 10：恐龙游戏碰撞后无法二次进入 — GameOver_Countdown 未重置](#问题-10恐龙游戏碰撞后无法二次进入--dinogameovercountdown-未重置--渲染顺序缺陷)
+  - [问题 11：菜单回到返回图标后相邻图标不显示 — MenuFlag==1 分支只绘制单个图标](#问题-11菜单回到返回图标后相邻图标不显示--menuflag1-分支只绘制单个图标)
 
 ---
 
@@ -1853,6 +1854,86 @@ return 0;
 - `dino.c:Dino_RenderFrame()`: 渲染前置到碰撞检测之前，消除 `else` 分支
 
 **关联问题：** 本问题与 [问题 7](#问题-7show_gameover-中-delay_ms1000-阻塞-task_ui-长达-1-秒)（Game Over 阻塞 1 秒）和 [问题 8](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)（重复 OLED_Update）同属恐龙游戏模块的 FreeRTOS 适配问题，三者共同完成了游戏结束流程的非阻塞改造。
+
+---
+
+### 问题 11：菜单回到返回图标后相邻图标不显示 — MenuFlag==1 分支只绘制单个图标
+
+**发现阶段：** Phase 5 回归测试 — 菜单导航功能测试
+
+**现象：**
+
+上电进入菜单后，按右键浏览下一项图标，再按左键回到返回图标（MenuFlag==1）时，屏幕上**只显示返回图标**，右侧相邻的秒表、手电筒等图标全部消失。
+
+**复现步骤：**
+
+1. 上电 → 时钟首页 → KEY3 进入菜单（MenuFlag=2，秒表图标被选中）
+2. 按 KEY2（右键）→ 菜单滑到下一项（MenuFlag=3，手电筒图标）
+3. 按 KEY1（左键）→ 菜单滑回（MenuFlag=2）
+4. 再按 KEY1（左键）→ 菜单回到返回图标（MenuFlag=1）
+5. **Bug 触发：** 屏幕上只有选择框 + 返回图标，右侧秒表/手电筒/MPU6050 等图标全部不显示
+
+**涉及文件：**
+
+- [menu.c:438-443](../SmartWatch_HAL/HAL/Core/Src/Hardware/menu.c#L438-L443) — `Render_Menu()` 中 `MenuFlag == 1` 分支
+
+**根因分析：**
+
+`Render_Menu()` 对 `MenuFlag == 1`（返回图标位置）做了特殊处理，只绘制了选择框和单个图标：
+
+```c
+// 修复前：
+if(MenuFlag == 1)
+{
+    /* 位置1是[返回]，无滑动动画 */
+    OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);
+    OLED_ShowImage(MENU_ICON_BASE_X, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[0]);
+}
+```
+
+对比 `MenuFlag >= 2` 时走 `else` 分支，`Menu_Animation()` 会绘制**5 个图标**（`Pre_item-2` ~ `Pre_item+2`）。而 `MenuFlag == 1` 分支只绘制了 `Menu_Graph[0]`（返回图标）一个，导致右侧相邻图标全部消失。
+
+| 分支 | 绘制图标数 | 可见图标 |
+|------|:---------:|---------|
+| `MenuFlag == 1`（修复前） | **1 个** | 仅返回图标 |
+| `MenuFlag >= 2`（动画完成后） | **5 个** | 当前选中 + 左右各 2 个 |
+
+**附带问题：** `MenuFlag == 1` 分支完全忽略了 `move_stateFlag` 和 `Direct_Flag`，意味着从 MenuFlag=2 按左键滑回返回图标时，没有滑动动画——画面瞬间跳变。
+
+**影响分析：**
+
+| 维度 | 影响 |
+|------|------|
+| 可用性 | 🟡 **中等** — 菜单回到返回位置时失去上下文，用户看不到右侧还有什么图标可选 |
+| 用户体验 | 图标从 5 个突然变成 1 个，视觉跳变明显，仿佛系统出错 |
+| 频率 | 100% 复现 |
+
+**解决方案：**
+
+在 `MenuFlag == 1` 分支中补绘右侧相邻的两个图标（`Menu_Graph[1]` 和 `Menu_Graph[2]`），使其与 `Menu_Animation()` 动画完成后的显示一致：
+
+```diff
+  if(MenuFlag == 1)
+  {
+-     /* 位置1是[返回]，无滑动动画 */
++     /* 位置1是[返回]，无滑动动画，但仍需绘制右侧相邻图标 */
+      OLED_ShowImage(MENU_FRAME_X, MENU_FRAME_Y, MENU_FRAME_W, MENU_FRAME_H, Frame);
+      OLED_ShowImage(MENU_ICON_BASE_X, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[0]);
++     OLED_ShowImage(MENU_ICON_BASE_X + MENU_ICON_SPACING, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[1]);
++     OLED_ShowImage(MENU_ICON_BASE_X + MENU_ICON_SPACING * 2, MENU_ICON_Y, MENU_ICON_SIZE, MENU_ICON_SIZE, Menu_Graph[2]);
+  }
+```
+
+| 方案 | 优点 | 风险 |
+|------|------|------|
+| ✅ 补绘右侧相邻图标 | 仅 2 行代码，与 Menu_Animation 行为一致 | 🟢 极低——仅增加绘制调用 |
+
+**修复后效果：**
+
+MenuFlag==1 时屏幕显示 `[返回] [秒表] [手电筒]` 三个图标，右侧后续图标自然超出 128px 屏幕宽度。图标布局与其他菜单位置完全一致。
+
+**修复状态：** ✅ **已修复**（2026-07-01）
+- `menu.c:Render_Menu()`: `MenuFlag == 1` 分支新增 2 行 `OLED_ShowImage()` 绘制右侧相邻图标
 
 ---
 
