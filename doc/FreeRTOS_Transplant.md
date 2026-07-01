@@ -8,7 +8,7 @@
 > **Phase 5 实施日期：** 2026-06-30 ~ 2026-07-01
 > **任务划分分析日期：** 2026-06-21
 > **编译验证：** ✅ ARMCC V5.06, 0 Error, 0 Warning
-> **移植状态：** ✅ 全部完成（Phase 1-5 已提交，11 个问题全部修复）
+> **移植状态：** ✅ 全部完成（Phase 1-5 已提交，12 个问题全部修复）
 > **目标 MCU：** STM32F103C8T6 (Cortex-M3)
 > **FreeRTOS 版本：** V10.3.1 (CMSIS_V1)
 > **当前工程：** SmartWatch_HAL (HAL 库版本)
@@ -42,6 +42,7 @@
   - [问题 9：OLED I2C 被抢占 — vTaskSuspendAll 保护 I2C 时序](#问题-9oled-i2c-被抢占--vtasksuspendall-保护-i2c-时序)
   - [问题 10：恐龙游戏碰撞后无法二次进入 — GameOver_Countdown 未重置](#问题-10恐龙游戏碰撞后无法二次进入--dinogameovercountdown-未重置--渲染顺序缺陷)
   - [问题 11：菜单回到返回图标后相邻图标不显示 — MenuFlag==1 分支只绘制单个图标](#问题-11菜单回到返回图标后相邻图标不显示--menuflag1-分支只绘制单个图标)
+  - [问题 12：Key3 长按无法翻转 PB12/PB13 — Task_Input 缺少 POWER_Boot 分支](#问题-12key3-长按无法翻转-pb12pb13--task_input-缺少-power_boot-分支)
 - [FreeRTOS 技能总结](#九freertos-移植技能总结)
 
 ---
@@ -804,7 +805,7 @@ uxTaskGetStackHighWaterMark(task_handle) 返回:
 | Phase 5 | 1-2 天 | ✅ 2 天 (2026-06-30 ~ 2026-07-01) |
 | 新增/修改文件 | ~8-12 个 | ~18 个 |
 | 核心改动量 | ~400-600 行 C 代码 | ~2,000+ 行（Phase 3 重构量大，含大量删除） |
-| 发现问题 | — | 11 个（全部修复） |
+| 发现问题 | — | 12 个（全部修复） |
 | 风险等级 | 中等 | 🟢 低 — 全部按计划推进并完成 |
 
 ---
@@ -1175,7 +1176,7 @@ Task_UI (Prio 2)                        Task_Sensor (Prio 1)
 | I2C 阻塞 | 🟢 已解决 | Task_UI 独占 OLED I2C + vTaskSuspendAll 保护；Task_Sensor 独占 MPU6050 I2C |
 | 传感器采样 | 🟢 **已完成** | Task_Sensor 独立后台 5ms 连续采样 + Sleep/Wake 功耗管理 |
 | 栈调优 | 🟢 **已完成** | Debug 页面显示各任务栈水位 + 堆空闲，栈大小已精确调优 |
-| 功能回归 | 🟢 **已完成** | 所有 11 个页面功能正常，11 个问题全部修复 |
+| 功能回归 | 🟢 **已完成** | 所有 11 个页面功能正常，12 个问题全部修复 |
 
 ### 最终进度
 
@@ -1200,22 +1201,22 @@ Task_UI (Prio 2)                        Task_Sensor (Prio 1)
 
 1. **工作量** — Phase 1-5 实际约 6 个工作日（Phase 3 因准备充分仅用 1 天，Phase 5 发现并修复 3 个问题）
 2. **架构改动** — 页面函数重构为状态机（while(1) → switch-case）是主要工作量，已全部完成
-3. **问题修复** — 共发现 11 个问题，全部修复，涵盖 CubeMX 配置、编译错误、API 误用、阻塞改造、临界区保护、状态管理
+3. **问题修复** — 共发现 12 个问题，全部修复，涵盖 CubeMX 配置、编译错误、API 误用、阻塞改造、临界区保护、状态管理、功能回归
 4. **Flash 占用** — FreeRTOS 内核约 6-8KB；总固件 Code=44374 RO-data=9862 RW-data=292 ZI-data=15420
 
 ### 结论
 
 > **FreeRTOS 移植全部完成。** 从 2026-06-14 可行性分析到 2026-07-01 Phase 5 完成，
-> 历时约 2.5 周（实际工作日约 6 天）。3 用户任务架构运行稳定，11 个问题全部修复，
+> 历时约 2.5 周（实际工作日约 6 天）。3 用户任务架构运行稳定，12 个问题全部修复，
 > 编译 0 Error 0 Warning。代码结构清晰，为后续 BLE、SPI Flash 等功能扩展预留了充裕的 RAM 余量（~9.2KB）。
 
 ---
 
 ## 八、问题整理归纳
 
-> 本章汇总 FreeRTOS 移植全过程中遇到并解决的 **11 个问题**，按发现阶段排序，便于查阅和回溯。
+> 本章汇总 FreeRTOS 移植全过程中遇到并解决的 **12 个问题**，按发现阶段排序，便于查阅和回溯。
 > 问题 1-4 发现于 Phase 1（CubeMX 集成），问题 5 发现于 Phase 3（编译验证），
-> 问题 6-8 发现于 Phase 5 前代码审查，问题 9-11 发现于 Phase 5 回归测试。
+> 问题 6-8 发现于 Phase 5 前代码审查，问题 9-11 发现于 Phase 5 回归测试，问题 12 发现于 Phase 5 后功能测试。
 
 ---
 
@@ -1943,6 +1944,154 @@ MenuFlag==1 时屏幕显示 `[返回] [秒表] [手电筒]` 三个图标，右�
 
 **修复状态：** ✅ **已修复**（2026-07-01）
 - `menu.c:Render_Menu()`: `MenuFlag == 1` 分支新增 2 行 `OLED_ShowImage()` 绘制右侧相邻图标
+
+---
+
+### 问题 12：Key3 长按无法翻转 PB12/PB13 — Task_Input 缺少 POWER_Boot 分支
+
+**发现阶段：** Phase 5 后功能测试 — 电源控制 PMOS 翻转测试
+
+**现象：**
+
+在时钟首页长按 Key3，预期行为是**翻转** PB13 和 PB12 两个 GPIO 引脚（PMOS 电源控制）。实际表现为：
+- **第一次长按**：PB12 能正常翻转（LOW→HIGH），PB13 从 HIGH 变为 LOW
+- **第二次长按**：PB13 **无反应**，无法从 LOW 恢复为 HIGH
+
+**复现步骤：**
+
+1. 上电进入时钟首页
+2. 长按 Key3（≥1秒）→ PB12 变为 HIGH（ADC PMOS 截止），PB13 变为 LOW（MCU 电源 PMOS 截止）
+3. 再次长按 Key3 → PB13 保持 LOW，无任何变化
+
+**涉及文件：**
+
+- [freertos.c:158-164](../SmartWatch_HAL/HAL/Core/Src/freertos.c#L158-L164) — `Task_Input()` 中 `key == 4` 的处理分支
+
+**根因分析：**
+
+旧版 STD 裸机代码（[STD/Hardware/menu.c:141-154](../STD/Hardware/menu.c#L141-L154)）中，Key3 长按实现了**翻转（toggle）**逻辑——根据 PB13 当前电平决定操作方向：
+
+```c
+// 旧版 STD 代码 — 翻转逻辑
+else if(KeyNum == 4)  // Long Press Key3
+{
+    if (GPIO_ReadOutputDataBit(GPIOB, GPIO_Pin_13) == 1)  // PB13 高 → 关机
+    {
+        GPIO_ResetBits(GPIOB, GPIO_Pin_13);  // PB13 LOW
+        GPIO_SetBits(GPIOB, GPIO_Pin_12);    // PB12 HIGH
+    }
+    else  // PB13 低 → 开机
+    {
+        GPIO_ResetBits(GPIOB, GPIO_Pin_12);  // PB12 LOW
+        GPIO_SetBits(GPIOB, GPIO_Pin_13);    // PB13 HIGH
+    }
+}
+```
+
+但在 Phase 2 创建 `Task_Input` 时，将此逻辑简化为**只调用 `POWER_Shutdown()`**，遗漏了 else 分支：
+
+```c
+// 修复前 — 只有单向关机，无翻转
+if (key == 4)
+{
+    /* Key3 长按 — 全局关机，不依赖当前页面 */
+    if (POWER_IsRunning())
+    {
+        POWER_Shutdown();   // PB12→HIGH, PB13→LOW
+    }
+    // ⚠️ BUG: else 分支缺失！PB13 已经 LOW 时什么都不做
+}
+```
+
+**数据流追踪：**
+
+```
+第一次长按:
+  Key_GetNum() → 4
+    → Task_Input: key == 4
+      → POWER_IsRunning() → PB13==HIGH → true
+        → POWER_Shutdown()
+          ├─ PB12 → HIGH ✅
+          └─ PB13 → LOW  ✅
+
+第二次长按:
+  Key_GetNum() → 4
+    → Task_Input: key == 4
+      → POWER_IsRunning() → PB13==LOW → false
+        → 什么都不做 ❌ (PB13 无法恢复 HIGH)
+```
+
+| 操作 | 第一次长按 | 第二次长按 |
+|:---|:---|:---|
+| PB13 初始状态 | HIGH | LOW |
+| `POWER_IsRunning()` | true | false |
+| 执行的操作 | `POWER_Shutdown()` | **无操作** |
+| PB13 最终状态 | LOW | **LOW（无变化）** |
+
+**影响分析：**
+
+| 维度 | 影响 |
+|:---|:---|
+| 可用性 | 🔴 **致命** — Key3 长按只能单向关机，无法通过长按恢复电源，翻转功能完全失效 |
+| 硬件 | PB13 控制 MCU 电源 PMOS，LOW=PMOS 导通（系统运行）。如果硬件设计为 PB13 LOW 时系统仍运行（PMOS 未真正切断电源），则 PB12 也无法恢复 |
+| 兼容性 | 与旧版 STD 裸机代码行为不一致，属于功能回归 bug |
+| 频率 | 100% 复现 |
+
+**解决方案：**
+
+在 `Task_Input()` 的 `key == 4` 分支中补充 `else` 分支，调用 `POWER_Boot()` 恢复 PB13=HIGH, PB12=LOW：
+
+```diff
+  if (key == 4)
+  {
+-     /* Key3 长按 — 全局关机，不依赖当前页面 */
++     /* Key3 长按 — 翻转 PB12/PB13 PMOS 电源控制（与旧版 STD 行为一致） */
+      if (POWER_IsRunning())
+      {
+-         POWER_Shutdown();
++         POWER_Shutdown();   /* PB13 HIGH→LOW(关机), PB12 LOW→HIGH(ADC断开) */
+      }
++     else
++     {
++         POWER_Boot();       /* PB13 LOW→HIGH(运行), PB12 HIGH→LOW(ADC开启) */
++     }
+  }
+```
+
+`POWER_Boot()` 函数已在 [power.c](../SmartWatch_HAL/HAL/Core/Src/power.c) 中实现，无需新增代码：
+
+```c
+void POWER_Boot(void)
+{
+    HAL_GPIO_WritePin(ADC_CONTROL_GPIO_Port, ADC_CONTROL_Pin, GPIO_PIN_RESET);   // PB12 LOW
+    HAL_GPIO_WritePin(POWER_CONTROL_GPIO_Port, POWER_CONTROL_Pin, GPIO_PIN_SET); // PB13 HIGH
+}
+```
+
+| 方案 | 优点 | 风险 |
+|:---|:---|:---|
+| ✅ 补充 `else { POWER_Boot(); }` | 2 行代码，恢复旧版翻转行为，复用已有 `POWER_Boot()` 函数 | 🟢 极低 — `POWER_Boot()` 与 `POWER_Shutdown()` 对称实现 |
+
+**修复后数据流：**
+
+```
+第一次长按 (PB13==HIGH):
+  POWER_IsRunning() → true → POWER_Shutdown()
+    ├─ PB12 → HIGH
+    └─ PB13 → LOW
+
+第二次长按 (PB13==LOW):
+  POWER_IsRunning() → false → POWER_Boot()
+    ├─ PB12 → LOW
+    └─ PB13 → HIGH  ✅ 恢复正常！
+```
+
+**验证方法：** 在时钟首页反复长按 Key3，用万用表测量 PB12/PB13 电平，确认每次长按都能翻转两个引脚。
+
+**修复状态：** ✅ **已修复**（2026-07-01）
+- `freertos.c:Task_Input()`: `key == 4` 分支新增 `else { POWER_Boot(); }`，恢复与旧版 STD 一致的翻转行为
+
+**关联问题：** 本问题属于 FreeRTOS 移植中功能回归类 bug——Phase 2 创建 `Task_Input` 时将旧版翻转逻辑简化为单向关机，遗漏了 `else` 分支。与 [问题 10](#问题-10恐龙游戏碰撞后无法二次进入--dinogameovercountdown-未重置--渲染顺序缺陷)（变量未重置）同属"移植时遗漏原有逻辑"类型。
 
 ---
 

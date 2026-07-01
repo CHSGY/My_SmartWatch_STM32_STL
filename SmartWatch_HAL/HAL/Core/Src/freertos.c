@@ -157,10 +157,14 @@ void Task_Input(void *pvParameters)
 
     if (key == 4)
     {
-      /* Key3 长按 — 全局关机，不依赖当前页面 */
+      /* Key3 长按 — 翻转 PB12/PB13 PMOS 电源控制（与旧版 STD 行为一致） */
       if (POWER_IsRunning())
       {
-        POWER_Shutdown();
+        POWER_Shutdown();   /* PB13 HIGH→LOW(关机), PB12 LOW→HIGH(ADC断开) */
+      }
+      else
+      {
+        POWER_Boot();       /* PB13 LOW→HIGH(运行), PB12 HIGH→LOW(ADC开启) */
       }
     }
     else if (key != 0)
