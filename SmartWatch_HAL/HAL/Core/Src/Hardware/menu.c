@@ -473,10 +473,10 @@ static void Render_Stopwatch(void)
 	Show_StopClock_UI();
 	switch(StopClock_Flag)
 	{
-		case 1: OLED_ReverseArea(0,0,16,16); break;
-		case 2: OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
-		case 3: OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
-		case 4: OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_W, STOPCLK_BTN_H); break;
+		case 1: OLED_ReverseArea(0, 0, 16, 16); break;
+		case 2: OLED_ReverseArea(STOPCLK_BTN_START_X, STOPCLK_BTN_Y, STOPCLK_BTN_START_W, STOPCLK_BTN_H); break;
+		case 3: OLED_ReverseArea(STOPCLK_BTN_STOP_X, STOPCLK_BTN_Y, STOPCLK_BTN_STOP_W, STOPCLK_BTN_H); break;
+		case 4: OLED_ReverseArea(STOPCLK_BTN_CLEAR_X, STOPCLK_BTN_Y, STOPCLK_BTN_CLEAR_W, STOPCLK_BTN_H); break;
 		default: break;
 	}
 }

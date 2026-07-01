@@ -78,18 +78,22 @@ typedef enum {
 #define MENU_ENTER_FRAMES       6       /* 进场动画帧数 */
 #define MENU_ENTER_STEP         8       /* 进场动画步距(px/帧) */
 
-/* ---- 秒表 ---- */
-#define STOPCLK_1S_TICKS        1000    /* 1秒 = 1000 个 tick */
+/* ---- 秒表 — 128x64 屏幕居中布局 ---- */
+#define STOPCLK_1S_TICKS        1000    /* 1秒 = 1000 个 tick（TIM2 1ms × 1000 = 1秒） */
 #define STOPCLK_SEC_MAX         60      /* 秒进位阈值 */
 #define STOPCLK_MIN_MAX         60      /* 分进位阈值 */
 #define STOPCLK_HOUR_MAX        99      /* 小时最大值（2位显示限制） */
-#define STOPCLK_TIME_X          32      /* 秒表时间显示 X */
-#define STOPCLK_TIME_Y          20      /* 秒表时间显示 Y */
-#define STOPCLK_BTN_START_X     8       /* "开始"按钮 X */
-#define STOPCLK_BTN_STOP_X      48      /* "停止"按钮 X */
-#define STOPCLK_BTN_CLEAR_X     88      /* "清除"按钮 X */
+#define STOPCLK_TIME_X          32      /* 秒表时间显示 X（8字×8px=64，居中(128-64)/2=32） */
+#define STOPCLK_TIME_Y          16      /* 秒表时间显示 Y */
+/* 三个按钮水平均匀分布: Start(40)+8+Stop(32)+8+Clear(40)=128, 恰好填满整行 */
+#define STOPCLK_BTN_START_X     0       /* "Start"按钮 X */
+#define STOPCLK_BTN_STOP_X      48      /* "Stop" 按钮 X */
+#define STOPCLK_BTN_CLEAR_X     88      /* "Clear"按钮 X */
 #define STOPCLK_BTN_Y           44      /* 按钮统一 Y 坐标 */
-#define STOPCLK_BTN_W           32      /* 按钮宽度 */
+/* 各按钮独立宽度 — 精确匹配文字，反显选中框不再错位 */
+#define STOPCLK_BTN_START_W     40      /* "Start" 5chars × 8px = 40px */
+#define STOPCLK_BTN_STOP_W      32      /* "Stop"  4chars × 8px = 32px */
+#define STOPCLK_BTN_CLEAR_W     40      /* "Clear" 5chars × 8px = 40px */
 #define STOPCLK_BTN_H           16      /* 按钮高度 */
 
 /* ---- 电池 ---- */
