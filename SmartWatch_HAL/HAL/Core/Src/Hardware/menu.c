@@ -581,36 +581,40 @@ static void Render_Gradienter(void)
 */
 static void Render_SetTime(void)
 {
-	/* 根据子状态决定显示日期还是时间 */
-	if(settime_state == SETTIME_MENU || settime_state <= SETTIME_DAY)
-	{
-		Show_SetDate_UI();
-	}
-	if(settime_state == SETTIME_MENU || settime_state >= SETTIME_HOUR)
-	{
-		Show_SetTime_UI();
-	}
-
 	switch(settime_state)
 	{
 		case SETTIME_MENU:
+			/* SETTIME_MENU: 双列布局同时显示全部6个字段 + 返回图标 */
+			OLED_ShowImage(0, 0, 16, 16, GoBack);
+
+			/* 左列：日期 (y=16起，避开返回图标) */
+			OLED_Printf(0, 16, OLED_8X16, "Y:%4d", MyRTC_Time[0]);
+			OLED_Printf(0, 32, OLED_8X16, "M:%2d", MyRTC_Time[1]);
+			OLED_Printf(0, 48, OLED_8X16, "D:%2d", MyRTC_Time[2]);
+
+			/* 右列：时间 */
+			OLED_Printf(64, 16, OLED_8X16, "H:%2d", MyRTC_Time[3]);
+			OLED_Printf(64, 32, OLED_8X16, "M:%2d", MyRTC_Time[4]);
+			OLED_Printf(64, 48, OLED_8X16, "S:%2d", MyRTC_Time[5]);
+
 			switch(Key_CursorFlag)
 			{
-				case 1: OLED_ReverseArea(0,0,16,16);     break; /* 返回 */
-				case 2: OLED_ReverseArea(24,16,32,16);   break; /* 年 */
-				case 3: OLED_ReverseArea(24,32,16,16);   break; /* 月 */
-				case 4: OLED_ReverseArea(24,48,16,16);   break; /* 日 */
-				case 5: OLED_ReverseArea(24,0,16,16);    break; /* 时 */
-				case 6: OLED_ReverseArea(24,16,16,16);   break; /* 分 */
-				case 7: OLED_ReverseArea(24,32,16,16);   break; /* 秒 */
+				case 1: OLED_ReverseArea(0, 0, 16, 16);      break; /* 返回 */
+				case 2: OLED_ReverseArea(16, 16, 32, 16);    break; /* Year */
+				case 3: OLED_ReverseArea(16, 32, 16, 16);    break; /* Mon */
+				case 4: OLED_ReverseArea(16, 48, 16, 16);    break; /* Day */
+				case 5: OLED_ReverseArea(80, 16, 16, 16);    break; /* Hour */
+				case 6: OLED_ReverseArea(80, 32, 16, 16);    break; /* Min */
+				case 7: OLED_ReverseArea(80, 48, 16, 16);    break; /* Sec */
 			}
 			break;
-		case SETTIME_YEAR:  OLED_ReverseArea(24,16,32,16);  break;
-		case SETTIME_MONTH: OLED_ReverseArea(24,32,16,16);  break;
-		case SETTIME_DAY:   OLED_ReverseArea(24,48,16,16);  break;
-		case SETTIME_HOUR:  OLED_ReverseArea(24,0,16,16);   break;
-		case SETTIME_MIN:   OLED_ReverseArea(24,16,16,16);  break;
-		case SETTIME_SEC:   OLED_ReverseArea(24,32,16,16);  break;
+
+		case SETTIME_YEAR:  Show_SetDate_UI(); OLED_ReverseArea(40,16,32,16);  break;
+		case SETTIME_MONTH: Show_SetDate_UI(); OLED_ReverseArea(32,32,16,16);  break;
+		case SETTIME_DAY:   Show_SetDate_UI(); OLED_ReverseArea(32,48,16,16);  break;
+		case SETTIME_HOUR:  Show_SetTime_UI(); OLED_ReverseArea(40,0,16,16);   break;
+		case SETTIME_MIN:   Show_SetTime_UI(); OLED_ReverseArea(32,16,16,16);  break;
+		case SETTIME_SEC:   Show_SetTime_UI(); OLED_ReverseArea(32,32,16,16);  break;
 	}
 }
 
@@ -928,11 +932,11 @@ static void UI_ProcessKey(uint8_t key)
 				/* 主菜单：移动光标 */
 				if(key == 1)
 				{
-					if(++Key_CursorFlag > 7) Key_CursorFlag = 1;
+					if(--Key_CursorFlag == 0) Key_CursorFlag = 7;
 				}
 				else if(key == 2)
 				{
-					if(--Key_CursorFlag == 0) Key_CursorFlag = 7;
+					if(++Key_CursorFlag > 7) Key_CursorFlag = 1;
 				}
 				else if(key == 3)
 				{

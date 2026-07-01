@@ -1,12 +1,12 @@
 /**
   * @file           : SetTime.c
-  * @brief          : RTC时间设置功能（HAL库版本 / FreeRTOS状态机版）
+  * @brief          : RTC时钟设置功能（HAL库版本 / FreeRTOS状态机版）
   * @author         : CHSGY
   * @date           : 2026-06-08
   *
   * @note           : Phase 3 改造：Set_Year/Month/Day/Hour/Min/Sec + SetTime_mainprocess
-  *                   的 while(1) 循环已迁移到 menu.c 的 Task_UI 状态机中。
-  *                   此文件仅保留底层绘制函数和 ChangeRTC_Time()。
+  *                   将 while(1) 循环迁移到 menu.c 的 Task_UI 状态机中。
+  *                   本文件仅保留底层操控函数 ChangeRTC_Time()。
   */
 
 #include "main.h"
@@ -17,7 +17,7 @@
 #include "Hardware/SetTime.h"
 
 
-/***************************RTC时间设置功能***********************************/
+/***************************RTC时钟设置功能***********************************/
 
 /**
   * @brief 显示日期设置UI
@@ -27,9 +27,9 @@
 void Show_SetDate_UI(void)
 {
 	OLED_ShowImage(0,0,16,16,GoBack);
-	OLED_Printf(0,16,OLED_8X16,"%4d",MyRTC_Time[0]);		//显示年
-	OLED_Printf(0,32,OLED_8X16,"%2d",MyRTC_Time[1]);		//显示月
-	OLED_Printf(0,48,OLED_8X16,"%2d",MyRTC_Time[2]);      //显示日
+	OLED_Printf(0,16,OLED_8X16,"Year:%4d",MyRTC_Time[0]);
+	OLED_Printf(0,32,OLED_8X16,"Mon:%2d",MyRTC_Time[1]);
+	OLED_Printf(0,48,OLED_8X16,"Day:%2d",MyRTC_Time[2]);
 }
 
 /**
@@ -39,16 +39,16 @@ void Show_SetDate_UI(void)
   */
 void Show_SetTime_UI(void)
 {
-	OLED_Printf(0,0,OLED_8X16,"%2d",MyRTC_Time[3]);		//显示时
-	OLED_Printf(0,16,OLED_8X16,"%2d",MyRTC_Time[4]);		//显示分
-	OLED_Printf(0,32,OLED_8X16,"%2d",MyRTC_Time[5]);       //显示秒
+	OLED_Printf(0,0,OLED_8X16,"Hour:%2d",MyRTC_Time[3]);
+	OLED_Printf(0,16,OLED_8X16,"Min:%2d",MyRTC_Time[4]);
+	OLED_Printf(0,32,OLED_8X16,"Sec:%2d",MyRTC_Time[5]);
 
 }
 
 /**
   * @brief 修改RTC时间值
-  * @param  i    时间数组索引：0-年 1-月 2-日 3-时 4-分 5-秒
-  * @param  flag 修改方向：0-减1 1-加1
+  * @param  i    时间索引（0-年 1-月 2-日 3-时 4-分 5-秒）
+  * @param  flag 修改方向（0-减1 1-加1）
   * @retval 无
   */
 void ChangeRTC_Time(uint8_t i,uint8_t flag)
