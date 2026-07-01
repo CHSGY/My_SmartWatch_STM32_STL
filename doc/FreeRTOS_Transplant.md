@@ -35,6 +35,7 @@
   - [问题 7：Game Over 阻塞 1 秒](#问题-7show_gameover-中-delay_ms1000-阻塞-task_ui-长达-1-秒)
   - [问题 8：Game Over 重复 I2C 传输](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)
   - [问题 9：OLED I2C 被抢占 — vTaskSuspendAll 保护 I2C 时序](#问题-9oled-i2c-被抢占--vtasksuspendall-保护-i2c-时序)
+  - [问题 10：恐龙游戏碰撞后无法二次进入 — GameOver_Countdown 未重置](#问题-10恐龙游戏碰撞后无法二次进入--dinogameovercountdown-未重置--渲染顺序缺陷)
 
 ---
 
@@ -1731,6 +1732,127 @@ Task_UI_RenderFrame(key)
 - `menu.c:Task_UI_RenderFrame()`: `OLED_Update()` 被 `vTaskSuspendAll` / `xTaskResumeAll` 包裹
 - I2C 传输期间无任务切换，帧周期稳定在 ~13ms（无按键时）
 - ISR 不受影响，TIM2 的按键采样和恐龙游戏逻辑正常执行
+
+---
+
+### 问题 10：恐龙游戏碰撞后无法二次进入 — `Dino_GameOver_Countdown` 未重置 + 渲染顺序缺陷
+
+**发现阶段：** Phase 5 前代码审查 — 游戏功能回归测试
+
+**现象：**
+
+恐龙游戏碰撞障碍物后显示 "Game Over" 界面并返回游戏选择页，但再次选择恐龙游戏时，第一帧就立即显示 "Game Over" 并被踢回选择页，无法正常重新开始游戏。
+
+**涉及文件：**
+
+- [dino.c:57-62](../SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c#L57-L62) — `Game_Init()` 函数
+- [dino.c:277-305](../SmartWatch_HAL/HAL/Core/Src/Hardware/dino.c#L277-L305) — `Dino_RenderFrame()` 函数
+
+**根因分析（两个子问题）：**
+
+**子问题 A：`Dino_GameOver_Countdown` 未在 `Game_Init()` 中重置（主因）**
+
+`Dino_GameOver_Countdown` 是 `static` 局部变量，在 `Game_Init()` 中没有被重置为 0：
+
+```c
+// 修复前：
+void Game_Init(void)
+{
+    Dino_GameActive = 1;
+    Dino_Score = Dino_ScoreCount = ... = 0;  // 重置了所有变量，唯独漏了 Countdown
+    Dino_JumpRequest = 0;
+}
+```
+
+当用户第一次游戏碰撞后，`Dino_GameOver_Countdown` 被设为 30 并开始递减。如果用户在倒计时中途（例如 Countdown=5）通过其他方式退出游戏（或被倒计时归零后返回选择页），该变量可能残留非零值。二次进入游戏时 `Game_Init()` 虽重置了其他变量，但 `Dino_GameOver_Countdown` 仍然 > 0，导致 `Dino_RenderFrame()` 第一帧就进入 Game Over 倒计时分支：
+
+```c
+if(Dino_GameOver_Countdown > 0)   // ← 残留值 > 0，立即进入
+{
+    Dino_GameOver_Countdown--;
+    // ... 显示 "Game Over" ...
+    if(Dino_GameOver_Countdown == 0)
+        return 1;                 // ← 返回游戏结束信号
+}
+return 0;
+```
+
+**子问题 B：渲染在碰撞检测的 else 分支中执行（次因）**
+
+原代码结构为 `if(碰撞) { 设置倒计时 } else { 渲染所有对象 }`。这意味着：
+
+1. 碰撞帧不渲染任何对象，`Barr` 和 `dino` 边界结构体不更新
+2. 如果 `Game_Init()` 后全局 `Barr`/`dino` 仍持有上次游戏的残留边界值（例如上一局结束时恐龙和障碍物恰好重叠），存在误判碰撞的风险
+3. 碰撞发生的瞬间玩家看不到恐龙和障碍物重叠的画面
+
+**影响分析：**
+
+| 维度 | 影响 |
+|------|------|
+| 可用性 | 🔴 **致命** — 游戏完全无法二次进入，等同于一次性游戏 |
+| 用户体验 | 选择恐龙游戏 → 闪一下 "Game Over" → 立即退回选择页，无任何交互机会 |
+| 频率 | 100% 复现 |
+
+**解决方案：**
+
+**修复 A：** 在 `Game_Init()` 中增加 `Dino_GameOver_Countdown = 0;`，确保每次重新进入游戏时倒计时从零开始。
+
+**修复 B：** 将渲染逻辑提到碰撞检测之前，每帧都先渲染所有对象（同时更新边界结构体），再进行碰撞检测。消除 `if-else` 分支，简化控制流。
+
+```diff
+ void Game_Init(void)
+ {
+     Dino_GameActive = 1;
++    Dino_GameOver_Countdown = 0;
+     Dino_Score = ... = 0;
+     Dino_JumpRequest = 0;
+ }
+
+ uint8_t Dino_RenderFrame(void)
+ {
+     if(Dino_GameOver_Countdown > 0) { ... }
+
+-    if(isColliding(&Barr, &dino))
+-    {
+-        Dino_GameOver_Countdown = 30;
+-        Dino_GameActive = 0;
+-    }
+-    else
+-    {
+-        Show_Score();
+-        Show_Ground();
+-        Show_Barrier();
+-        Show_Cloud();
+-        Show_Dino();
+-    }
++    /* 先更新所有对象位置，再进行碰撞检测 */
++    Show_Score();
++    Show_Ground();
++    Show_Barrier();
++    Show_Cloud();
++    Show_Dino();
++
++    if(isColliding(&Barr, &dino))
++    {
++        Dino_GameOver_Countdown = 30;
++        Dino_GameActive = 0;
++    }
++
+     return 0;
+ }
+```
+
+| 方案 | 优点 | 风险 |
+|------|------|------|
+| ✅ 修复 A + B 组合 | 根治重置问题 + 消除残留碰撞风险 + 控制流更简洁 | 🟢 低——改动仅 dino.c 一个文件 |
+
+**验证方法：** 多次进入游戏 → 碰撞 → Game Over → 返回 → 再次进入游戏，确认每次都能正常开始新游戏。
+
+**修复状态：** ✅ **已修复**（2026-07-01）
+- `dino.c:Game_Init()`: 新增 `Dino_GameOver_Countdown = 0;`
+- `dino.c:Dino_RenderFrame()`: 渲染前置到碰撞检测之前，消除 `else` 分支
+
+**关联问题：** 本问题与 [问题 7](#问题-7show_gameover-中-delay_ms1000-阻塞-task_ui-长达-1-秒)（Game Over 阻塞 1 秒）和 [问题 8](#问题-8show_gameover-中-oldupdate-与-task_ui-重复调用导致单帧-i2c-翻倍)（重复 OLED_Update）同属恐龙游戏模块的 FreeRTOS 适配问题，三者共同完成了游戏结束流程的非阻塞改造。
 
 ---
 

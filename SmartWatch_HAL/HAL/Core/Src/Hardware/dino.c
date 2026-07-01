@@ -57,6 +57,7 @@ struct Object_Position{
 void Game_Init(void)
 {
     Dino_GameActive = 1;
+    Dino_GameOver_Countdown = 0;
     Dino_Score = Dino_ScoreCount = Dino_GroundCount = Dino_GroundPos = Dino_BarrierPos = Dino_BarrierFlag = Dino_CloudPos = Dino_CloudCount = Dino_JumpFlag = Dino_JumpPos = Dino_JumpCount = 0;
     Dino_JumpRequest = 0;
 }
@@ -286,21 +287,19 @@ uint8_t Dino_RenderFrame(void)
         }
         return 0;
     }
-    
+
+    /* 先更新所有对象位置，再进行碰撞检测（防止复用上次游戏的残留碰撞数据） */
+    Show_Score();
+    Show_Ground();
+    Show_Barrier();
+    Show_Cloud();
+    Show_Dino();
 
     if(isColliding(&Barr, &dino))
     {
         Dino_GameOver_Countdown = 30;
         Dino_GameActive = 0;
-        //Show_GameOver();
     }
-    else
-    {
-        Show_Score();
-        Show_Ground();
-        Show_Barrier();
-        Show_Cloud();
-        Show_Dino();
-    }
+
     return 0;
 }
