@@ -182,8 +182,8 @@ void Task_Input(void *pvParameters)
   * @brief  Task_UI — 统一页面渲染任务
   * @param  pvParameters: 未使用
   * @retval 无
-  * @note   优先级 2，栈 1280 bytes (320 words)
-  *         独占 OLED I2C 总线，所有 11 个页面在此任务内渲染。
+ * @note   优先级 2，栈 1280 bytes (320 words)
+ *         独占 OLED I2C 总线，所有 12 个页面在此任务内渲染。
   *         xTaskNotifyWait(33ms) 同时实现帧率控制（30FPS）和按键事件驱动。
   *         实际渲染逻辑委托给 menu.c 的 Task_UI_RenderFrame()。
   */

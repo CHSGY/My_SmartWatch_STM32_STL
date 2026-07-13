@@ -21,13 +21,13 @@
 
 | 层次 | 模块 | 代码量 |
 |------|------|--------|
-| **应用入口** | main.c / freertos.c / stm32f1xx_it.c | ~970 行 |
-| **硬件驱动** | OLED (1510) / OLED_Data (1055) / menu (1078) / dino (305) / Key (232) / MPU6050 (153) / LED (105) / SetTime (65) / AD (25) | ~4,530 行 |
-| **系统层** | MyRTC (73) / delay (52) / power (39) / MyI2C | ~200 行 |
-| **头文件** | 所有模块 .h 文件 | ~1,490 行 |
-| **用户代码总计** | 14 个 .c + 14 个 .h | **~7,200 行** |
+| **应用入口** | main.c / freertos.c / stm32f1xx_it.c | ~971 行 |
+| **硬件驱动** | OLED (1510) / OLED_Data (1055) / menu (1078) / dino (277) / Key (232) / MPU6050 (153) / LED (105) / SetTime (56) / AD (25) | ~4,491 行 |
+| **系统层** | MyRTC (70) / delay (52) / power (40) / MyI2C (177) | ~339 行 |
+| **头文件** | 所有模块 .h 文件 | ~1,478 行 |
+| **用户代码总计** | 16 个 .c + 18 个 .h | **~7,279 行** |
 
-> 完整工程（含 HAL 库 + FreeRTOS 内核源码）约 60 万行，其中自主编写的应用层代码约 7,200 行，体现了在成熟生态基础上进行高效应用开发的能力。
+> 完整工程（含 HAL 库 + FreeRTOS 内核源码）约 60 万行，其中自主编写的应用层代码约 7,279 行，体现了在成熟生态基础上进行高效应用开发的能力。
 
 ---
 
@@ -93,7 +93,7 @@ Standard Peripheral Library (裸机)          HAL 库迁移              FreeRTO
 | TIM2 ISR → Task_Input | `vTaskNotifyGiveFromISR()` | 零拷贝唤醒，按键事件通知 |
 | Task_Input → Task_UI | `xTaskNotify()` | 按键值转发（覆盖写语义） |
 | Task_UI → Task_Sensor | `xTaskNotify()` | 传感器启停命令（进入/离开传感器页） |
-| OLED I2C 互斥 | `vTaskSuspendAll()` | I2C 传输期间禁止抢占，防止时序错乱 |
+| OLED I2C 互斥 | `vTaskSuspendAll()` | 整帧 I2C 传输期间禁止抢占，防止帧时间抖动 |
 | 帧率控制 | `xTaskNotifyWait(33ms)` | 事件驱动唤醒 + 30FPS 超时驱动 |
 
 ---
@@ -107,7 +107,7 @@ Standard Peripheral Library (裸机)          HAL 库迁移              FreeRTO
 **划分原则：**
 
 1. **时序独立性**：按键扫描（事件驱动）≠ UI 渲染（帧驱动）≠ 传感器采样（周期驱动）→ 天然 3 任务
-2. **资源独占性**：OLED（PB10/PB11）和 MPU6050（PB10/PB11）各有一条独立软件 I2C 总线，任务独占各自总线 → 无需互斥锁
+2. **资源独占性**：OLED（PB8/PB9）和 MPU6050（PB10/PB11）各有一条独立软件 I2C 总线，任务独占各自总线 → 无需互斥锁
 3. **SRAM 约束**：20KB SRAM 下每个任务栈必须精确计算 → 通过 `uxTaskGetStackHighWaterMark()` 实测优化
 
 ### 任务规格
@@ -117,8 +117,8 @@ Standard Peripheral Library (裸机)          HAL 库迁移              FreeRTO
 | **Task_Input** | 3 (最高) | 384B | 事件驱动 | TIM2 ISR → Task Notify | 按键消抖、长按关机、按键转发 |
 | **Task_UI** | 2 | 1280B | 30FPS (33ms) | Task Notify + 超时 | 12 页面状态机、OLED 独占渲染 |
 | **Task_Sensor** | 1 (最低) | 512B | 5ms 周期 | Task_UI 通知启停 | MPU6050 互补滤波、欧拉角计算 |
-| Idle | 0 | 128B | — | 静态分配 | `__WFI()` 统一低功耗入口 |
-| Timer | 2 | 256B | — | 静态分配 | FreeRTOS 软件定时器服务 |
+| Idle | 0 | 512B | — | 静态分配 | `__WFI()` 统一低功耗入口 |
+| Timer | 2 | 1024B | — | 静态分配 | FreeRTOS 软件定时器服务 |
 
 ### 优先级分析
 
@@ -150,10 +150,10 @@ Standard Peripheral Library (裸机)          HAL 库迁移              FreeRTO
 | 📋 **主菜单** | 7 项图标式菜单 + 滑动动画 | 帧动画（8px/帧滑入）、光标反显、图标索引 |
 | ⚙️ **设置** | 系统设置入口 | 预留扩展接口 |
 | ⏱️ **秒表** | 启/停/清零计时器 | TIM2 1ms tick 驱动、按钮反显选中态、居中布局 |
-| 🔦 **手电筒** | LED 全亮照明 | GPIO 推挽输出、PWM 预留 |
+| 🔦 **手电筒** | LED 全亮照明 | GPIO 推挽输出 |
 | 📊 **传感器数据** | 加速度 + 陀螺仪 + 欧拉角 | 互补滤波（α=0.9）、5ms 采样、100ms 快速收敛期 |
 | 🫧 **水平仪** | 气泡尺姿态显示 | 欧拉角 → 圆心偏移映射、圆形边界约束 |
-| 🦖 **恐龙游戏** | 跑酷跳跃游戏 | 物理跳跃抛物线、障碍物随机生成、碰撞检测、分数累加 |
+| 🦖 **恐龙游戏** | 跑酷跳跃游戏 | 正弦函数跳跃曲线、障碍物随机生成、碰撞检测、分数累加 |
 | 😊 **表情动画** | 眨眼表情循环 | 椭圆绘制（Bresenham 算法）、帧动画状态机 |
 | 🕑 **时间设置** | RTC 日历设置 | 子状态机（年/月/日/时/分/秒）、BCD 格式转换 |
 | 🔍 **Debug 页面** | 任务栈水位监控 | `uxTaskGetStackHighWaterMark()` 5 任务栈实时读取 |
@@ -171,7 +171,7 @@ Standard Peripheral Library (裸机)          HAL 库迁移              FreeRTO
 | 编译结果 | 0 Error, 0 Warning | 待验证 |
 | 技术债务 | 编译器已停止维护 | 未来迁移方向 |
 
-**决策**：先用 ARMCC V5 + CMSIS-RTOS v1 把 FreeRTOS 跑起来，编码迁移留待后续统一处理。完整分析见 [FreeRTOS_Compiler_Migration_Analysis.md](doc/FreeRTOS_Compiler_Migration_Analysis.md)。
+**决策**：先用 ARMCC V5 + 原生 FreeRTOS API 把系统跑起来，编码迁移留待后续统一处理（仅启动调度器使用了 CMSIS-RTOS v1 封装层 `osKernelStart()`）。完整分析见 [FreeRTOS_Compiler_Migration_Analysis.md](doc/FreeRTOS_Compiler_Migration_Analysis.md)。
 
 ### 2. 静态内存分配：应对 20KB SRAM 极限
 
@@ -179,7 +179,7 @@ Idle Task 和 Timer Task 使用静态分配（`StaticTask_t` + `StackType_t` 数
 
 ### 3. OLED I2C 时序保护
 
-软件 I2C（bit-banging）对时序极度敏感。高优先级任务抢占会导致 SCL 脉冲被拉长，从设备误判为 STOP 条件。**方案**：`OLED_Update()` 中调用 `vTaskSuspendAll()` 挂起调度器，I2C 传输完成后 `xTaskResumeAll()` 恢复。彻底消除 I2C 花屏和 MPU6050 数据异常。
+软件 I2C（bit-banging）对时序极度敏感。高优先级任务抢占会导致 SCL 脉冲被拉长，从设备误判为 STOP 条件。**方案**：在 `Task_UI_RenderFrame()` 调用 `OLED_Update()` 之前使用 `vTaskSuspendAll()` 挂起调度器，整帧 I2C 传输完成后 `xTaskResumeAll()` 恢复。彻底消除 I2C 花屏和帧时间抖动。
 
 ### 4. DWT 微秒延时：与 FreeRTOS SysTick 解耦
 
@@ -219,16 +219,16 @@ Idle Task 和 Timer Task 使用静态分配（`StaticTask_t` + `StackType_t` 数
 
 | 外设 | 引脚 | 说明 |
 |------|------|------|
-| OLED SCL | PB10 | 软件 I2C 时钟线（开漏输出） |
-| OLED SDA | PB11 | 软件 I2C 数据线（开漏输出） |
+| OLED SCL | PB8 | 软件 I2C 时钟线（开漏输出） |
+| OLED SDA | PB9 | 软件 I2C 数据线（开漏输出） |
 | MPU6050 SCL | PB10 | 独立软件 I2C 时钟线 |
 | MPU6050 SDA | PB11 | 独立软件 I2C 数据线 |
 | Key1 (上) | PB1 | 上拉输入，20ms 消抖 |
 | Key2 (下) | PA6 | 上拉输入，20ms 消抖 |
 | Key3 (确认) | PA4 | 上拉输入，长按 ≥1s = 关机 |
 | LED1 | PA0 | 推挽输出，手电筒 |
-| LED2 | PB5 | 推挽输出，状态指示 |
-| LED3 | PB6 | 推挽输出，状态指示 |
+| LED2 | PB12 | 推挽输出，ADC 控制 PMOS |
+| LED3 | PB13 | 推挽输出，MCU 电源 PMOS 控制 |
 | ADC 电池 | PA2 | ADC1 CH2，12-bit 采样 |
 | POWER_CTRL | PB13 | MCU 电源 PMOS 控制 |
 | ADC_CTRL | PB12 | ADC/高压 PMOS 控制 |
@@ -291,7 +291,7 @@ SmartWatch_HAL/HAL/
 │       └── Hardware/                   # 硬件驱动源文件
 │           ├── OLED.c / OLED_Data.c    # 显示驱动 (1510 + 1055 行)
 │           ├── menu.c                  # 12 页面状态机 + UI 渲染 (1078 行)
-│           ├── dino.c                  # 恐龙游戏物理引擎 (305 行)
+│           ├── dino.c                  # 恐龙游戏物理引擎 (277 行)
 │           ├── Key.c                   # 按键消抖 + 长按检测 (232 行)
 │           ├── MPU6050.c               # 传感器初始化 + 欧拉角 (153 行)
 │           ├── LED.c / AD.c / SetTime.c
@@ -323,7 +323,7 @@ STD/                                    # 基线参考：标准外设库裸机�
 | **资源约束优化** | 20KB SRAM 下的静态/动态分配权衡、栈水位监控、Task Notification 替代队列节省 RAM |
 | **并发与同步** | 临界区保护、vTaskSuspendAll 保护 I2C 时序、ISR → Task 通知机制、竞态条件修复 |
 | **功耗管理** | 多层级低功耗策略（WFI 休眠、MPU6050 Sleep/Wake、30FPS 帧率控制、间歇 ADC 采样、PMOS 硬件关机） |
-| **工程规范** | CubeMX 代码生成、分阶段移植、11 个问题的系统化追踪与修复、4 篇方法论文档 |
+| **工程规范** | CubeMX 代码生成、分阶段移植、11 个问题的系统化追踪与修复、5 篇方法论文档 |
 | **编译器与工具链** | ARMCC V5 vs ARMCLANG V6 选型分析、NVIC 优先级分组、DWT 与 SysTick 解耦 |
 
 ---
@@ -336,6 +336,7 @@ STD/                                    # 基线参考：标准外设库裸机�
 | [FreeRTOS_Compiler_Migration_Analysis.md](doc/FreeRTOS_Compiler_Migration_Analysis.md) | 编译器选型分析（ARMCC V5 vs ARMCLANG V6 + NVIC 冲突） |
 | [MIGRATION_REPORT.md](doc/MIGRATION_REPORT.md) | STD → HAL 迁移详细报告 |
 | [HAL_Porting_Issues.md](doc/HAL_Porting_Issues.md) | HAL 移植问题追踪 |
+| [I2C.md](doc/I2C.md) | 软件 I2C 设计与实现说明 |
 
 ---
 
