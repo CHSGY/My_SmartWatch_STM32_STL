@@ -32,6 +32,13 @@ DebugConfig/
 .vscode/uv4.log.lock
 .vscode/keil-assistant.log
 
+# OpenCode Tooling
+.omo/
+
+# IDE Config & Logs (sub-projects)
+SmartWatch_HAL/HAL/MDK-ARM/.vscode/
+SmartWatch_HAL/HAL/MDK-ARM/build_output.txt
+
 # OS Files
 *.bak
 *.swp
